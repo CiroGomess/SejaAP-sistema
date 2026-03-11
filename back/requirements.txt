@@ -1,0 +1,10 @@
+Flask
+Flask-Cors
+requests
+python-dotenv
+PyJWT
+passlib
+psycopg2-binary
+pandas
+openpyxl
+Werkzeug
