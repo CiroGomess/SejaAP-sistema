@@ -40,10 +40,8 @@ export default function ClientHeader({ client }: ClientHeaderProps) {
       a.click();
       a.remove();
 
-      // Se você já tiver showAlert no seu projeto, pode trocar para showAlert(...)
-      // showAlert('Download do modelo de contabilidade iniciado.', 'info');
     } catch {
-      // showAlert('Não foi possível iniciar o download do modelo de contabilidade.', 'error');
+      
     }
   };
 

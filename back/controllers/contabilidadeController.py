@@ -3,6 +3,7 @@ import pandas as pd
 from math import ceil
 from flask import request, jsonify
 from config.db import get_connection
+from datetime import datetime, date
 
 # =========================
 # Config / Validation
@@ -56,71 +57,131 @@ def _parse_file_data(file_storage) -> list[dict] | None:
 # =========================
 # UPLOAD
 # =========================
+
+
 def upload_contabilidade(current_user=None):
+    """
+    Faz o upload de dados contábeis, acumulando-os no banco de dados.
+    Lê colunas de Descrição, Valor e Registro/Data.
+    """
     file = request.files.get("file")
     user_id = request.form.get("user_id")
     ano = request.form.get("ano")
     categoria = request.form.get("categoria")
 
-    if not file or not _allowed_file(file.filename):
-        return jsonify({"error": "Invalid file"}), 400
+    # 1. Validações Iniciais
+    if not file:
+        return jsonify({"error": "Nenhum arquivo enviado"}), 400
     if not user_id or not ano:
-        return jsonify({"error": "Missing user_id or ano"}), 400
+        return jsonify({"error": "user_id e ano são obrigatórios"}), 400
 
     try:
         user_id = int(user_id)
         ano = int(ano)
-    except ValueError:
-        return jsonify({"error": "Invalid int format"}), 400
+    except (ValueError, TypeError):
+        return jsonify({"error": "user_id e ano devem ser números inteiros"}), 400
 
-    parsed_data = _parse_file_data(file)
+    # 2. Parse do Arquivo (Usando a lógica de leitura robusta)
+    try:
+        # Reposiciona o ponteiro do arquivo para garantir leitura total
+        file.seek(0)
+        filename = file.filename.lower()
+        
+        if filename.endswith('.csv'):
+            # Tenta ler CSV com os dois separadores mais comuns
+            try:
+                df = pd.read_csv(file, sep=',')
+                if len(df.columns) < 2: raise Exception()
+            except:
+                file.seek(0)
+                df = pd.read_csv(file, sep=';')
+        else:
+            df = pd.read_excel(file)
+        
+        parsed_data = df.to_dict(orient="records")
+    except Exception as e:
+        return jsonify({"error": "Erro ao ler arquivo", "details": str(e)}), 400
+
     if not parsed_data:
-        return jsonify({"error": "Empty or invalid file data"}), 400
+        return jsonify({"error": "O arquivo está vazio"}), 400
 
+    # 3. Processamento e Inserção no Banco
     conn = None
     try:
         conn = get_connection()
         cur = conn.cursor()
 
-        if not _customer_id_exists(cur, user_id):
-            return jsonify({"error": "User not found"}), 404
-
-        if categoria:
-            cur.execute(
-                "DELETE FROM public.contabilidade_dados WHERE user_id = %s AND ano = %s AND categoria = %s;",
-                (user_id, ano, categoria)
-            )
-        else:
-            cur.execute(
-                "DELETE FROM public.contabilidade_dados WHERE user_id = %s AND ano = %s;",
-                (user_id, ano)
-            )
+        # --- REMOVIDO O DELETE --- 
+        # Agora a função apenas ADICIONA os dados, permitindo acumular registros.
 
         insert_query = """
-            INSERT INTO public.contabilidade_dados (user_id, ano, descricao, valor, categoria)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO public.contabilidade_dados (user_id, ano, descricao, valor, categoria, data_registro)
+            VALUES (%s, %s, %s, %s, %s, %s)
         """
-        values_to_insert = [
-            (user_id, ano, item["descricao"], item["valor"], categoria) 
-            for item in parsed_data
-        ]
-        cur.executemany(insert_query, values_to_insert)
-        conn.commit()
+        
+        values_to_insert = []
+        for item in parsed_data:
+            data_raw = None
+            desc = None
+            val = None
+
+            # Busca dinâmica: ignora maiúsculas, espaços e acentos nos nomes das colunas
+            for key, value in item.items():
+                k_norm = str(key).strip().lower().replace(" ", "").replace("-", "").replace("_", "")
+                
+                if "registro" in k_norm or "data" in k_norm:
+                    data_raw = value
+                elif "desc" in k_norm:
+                    desc = value
+                elif "valor" in k_norm or "val" in k_norm:
+                    val = value
+
+            # Conversão segura da data para objeto date do Python
+            data_formatada = None
+            if data_raw and str(data_raw).lower() != 'nan':
+                if isinstance(data_raw, (date, datetime)):
+                    data_formatada = data_raw if isinstance(data_raw, date) else data_raw.date()
+                elif isinstance(data_raw, str) and data_raw.strip():
+                    try:
+                        # Tenta formato brasileiro: 10/03/2026
+                        data_clean = data_raw.strip().split(" ")[0]
+                        data_formatada = datetime.strptime(data_clean, "%d/%m/%Y").date()
+                    except ValueError:
+                        try:
+                            # Tenta formato ISO: 2026-03-10
+                            data_formatada = date.fromisoformat(data_clean)
+                        except:
+                            data_formatada = None
+
+            # Monta a tupla de inserção
+            values_to_insert.append((
+                user_id, 
+                ano, 
+                str(desc) if desc else "Sem descrição", 
+                float(val) if val else 0.0, 
+                categoria, 
+                data_formatada
+            ))
+
+        # Executa o insert em massa (bulk insert)
+        if values_to_insert:
+            cur.executemany(insert_query, values_to_insert)
+            conn.commit()
 
         return jsonify({
-            "message": "Contabilidade data imported successfully",
-            "rows_imported": len(values_to_insert),
-            "ano": ano,
+            "message": "Dados acumulados com sucesso!",
+            "rows_inserted": len(values_to_insert),
             "user_id": user_id,
-            "categoria": categoria
+            "ano": ano
         }), 201
 
     except Exception as e:
         if conn: conn.rollback()
-        return jsonify({"error": "DB Error", "details": str(e)}), 500
+        return jsonify({"error": "Erro de Banco de Dados", "details": str(e)}), 500
     finally:
         if conn: conn.close()
-
+        
+        
 # =========================
 # LIST WITH PAGINATION
 # =========================
