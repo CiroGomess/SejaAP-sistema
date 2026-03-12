@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-
     BarChart,
     Bar,
     XAxis,
@@ -11,7 +10,6 @@ import {
     Tooltip,
     Legend,
     ResponsiveContainer,
- 
     PieChart,
     Pie,
     Cell,
@@ -42,13 +40,8 @@ import {
 import {
     TrendingUp,
     TrendingDown,
-  
     AttachMoney,
-    ShowChart,
-    BarChart as BarChartIcon,
-    PieChart as PieChartIcon,
     Timeline,
- 
     ChevronLeft as ChevronLeftIcon,
     ChevronRight as ChevronRightIcon,
     Percent,
@@ -57,17 +50,13 @@ import {
     Description as DescriptionIcon,
 } from '@mui/icons-material';
 
-
-
 // --- PALETA DE CORES PREMIUM ---
 const GOLD_PRIMARY = '#E6C969';
-
 const GOLD_LIGHT = '#F5E6B8';
 const DARK_BG = '#0F172A';
 const WHITE = '#FFFFFF';
 const GRAY_MAIN = '#64748B';
 const GRAY_LIGHT = '#94A3B8';
-
 const BORDER_LIGHT = 'rgba(100, 116, 139, 0.2)';
 const TEXT_DARK = '#0F172A';
 
@@ -111,70 +100,72 @@ const PIE_COLORS = [
 /* =========================
    TIPOS
 ========================= */
-type ContabilidadeData = {
-    id: number;
-    ano: number;
-    descricao: string;
-    valor: number;
-    categoria: string | null;
-    data_importacao: string | null;
+type DashboardResumo = {
+    receitas: number;
+    despesas: number;
+    resultado: number;
+    margem_percentual: number;
+    total_registros_ano: number;
+    label_total_registros: string;
 };
 
-type ContabilidadeResumo = {
-    totalReceitas: number;
-    totalDespesas: number;
+type DashboardMensal = {
+    mes_numero: number;
+    mes: string;
+    receitas: number;
+    despesas: number;
     resultado: number;
-    margem: number;
-    porDescricao: {
-        nome: string;
-        valor: number;
-        percentual: number;
-        tipo: 'receita' | 'despesa';
-        categoria?: string;
-    }[];
-    porCategoria: {
-        nome: string;
-        valor: number;
-        percentual: number;
-        tipo: 'receita' | 'despesa';
-    }[];
-    meses: {
-        mes: number;
-        nome: string;
-        receitas: number;
-        despesas: number;
-        resultado: number;
-    }[];
+};
+
+type DashboardTopDescricao = {
+    rank: number;
+    descricao: string;
+    categoria: string;
+    valor: number;
+    total_itens: number;
+    percentual_sobre_receitas: number;
+    tipo: 'receita' | 'despesa';
+    label_rank: string;
+};
+
+type DashboardTopCategoria = {
+    rank: number;
+    categoria: string;
+    valor: number;
+    total_itens: number;
+    percentual_sobre_receitas: number;
+    tipo: 'receita' | 'despesa';
+    label_rank: string;
+};
+
+type DashboardFiltros = {
+    user_id: number;
+    ano: number;
+    anos_disponiveis: number[];
+};
+
+type ContabilidadeDashboard = {
+    filtros: DashboardFiltros;
+    resumo: DashboardResumo;
+    mensal: DashboardMensal[];
+    top_descricoes: DashboardTopDescricao[];
+    top_categorias: DashboardTopCategoria[];
 };
 
 type Props = {
     userId: number;
-    data: ContabilidadeData[];
+    ano: number | null;
+    onAnoChange: (ano: number | null) => void;
+    dashboard: ContabilidadeDashboard | null;
     loading?: boolean;
 };
 
-type ChartType = 'line' | 'area' | 'bar' | 'pie';
-type DataType = 'receitas' | 'despesas' | 'resultado' | 'descricao' | 'categoria';
+type ChartType = 'bar' | 'line' | 'area' | 'pie';
+type DataType = 'resultado' | 'descricao' | 'categoria';
 
 /* =========================
    HELPERS
 ========================= */
-function nomeMes(m: number) {
-    const meses = [
-        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
-    ];
-    return meses[m - 1] ?? '-';
-}
-
-function nomeMesAbreviado(m: number) {
-    const meses = [
-        'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
-        'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
-    ];
-    return meses[m - 1] ?? '-';
-}
-
 function money(v?: number | null) {
     return (v ?? 0).toLocaleString('pt-BR', {
         style: 'currency',
@@ -186,13 +177,13 @@ function money(v?: number | null) {
 
 function formatShortNumber(value: number): string {
     if (Math.abs(value) >= 1e9) {
-        return (value / 1e9).toFixed(1) + 'Bi';
+        return `${(value / 1e9).toFixed(1)}Bi`;
     }
     if (Math.abs(value) >= 1e6) {
-        return (value / 1e6).toFixed(1) + 'Mi';
+        return `${(value / 1e6).toFixed(1)}Mi`;
     }
     if (Math.abs(value) >= 1e3) {
-        return (value / 1e3).toFixed(0) + 'mil';
+        return `${(value / 1e3).toFixed(0)}mil`;
     }
     return value.toString();
 }
@@ -204,148 +195,57 @@ function formatPercent(v: number) {
 /* =========================
    COMPONENTE PRINCIPAL
 ========================= */
-export default function ContabilidadeChart({ userId, data, loading: externalLoading }: Props) {
-    const [ano, setAno] = useState<number | null>(null);
-    const [anosDisponiveis, setAnosDisponiveis] = useState<number[]>([]);
+export default function ContabilidadeChart({
+    userId,
+    ano,
+    onAnoChange,
+    dashboard,
+    loading: externalLoading,
+}: Props) {
     const [chartType, setChartType] = useState<ChartType>('bar');
     const [dataType, setDataType] = useState<DataType>('resultado');
-    const [loading, setLoading] = useState(false);
 
-    // Gerar lista de anos (últimos 5 anos)
-    useEffect(() => {
-        const currentYear = new Date().getFullYear();
-        const anos = [];
-        for (let i = 0; i < 5; i++) {
-            anos.push(currentYear - i);
-        }
-        setAnosDisponiveis(anos);
-        setAno(currentYear);
-    }, []);
+    const anosDisponiveis = dashboard?.filtros?.anos_disponiveis || [];
+    const resumo = dashboard?.resumo || null;
+    const topDescricoes = dashboard?.top_descricoes || [];
+    const topCategorias = dashboard?.top_categorias || [];
+    const dadosMensais = dashboard?.mensal || [];
 
-    // Processar dados para análise
-    const resumo = useMemo((): ContabilidadeResumo | null => {
-        if (!data || data.length === 0) return null;
-
-        // Filtrar dados pelo ano selecionado
-        const dadosAno = ano ? data.filter(item => item.ano === ano) : data;
-
-        if (dadosAno.length === 0) return null;
-
-        // Calcular totais por descrição e categoria
-        const totaisPorDescricao: Record<string, { valor: number; categoria?: string }> = {};
-        const totaisPorCategoria: Record<string, number> = {};
-        let totalReceitas = 0;
-        let totalDespesas = 0;
-
-        dadosAno.forEach(item => {
-            const descricao = item.descricao || 'Sem descrição';
-            const categoria = item.categoria || 'Sem categoria';
-
-            // Por descrição
-            if (!totaisPorDescricao[descricao]) {
-                totaisPorDescricao[descricao] = { valor: 0, categoria };
-            }
-            totaisPorDescricao[descricao].valor += item.valor;
-
-            // Por categoria
-            totaisPorCategoria[categoria] = (totaisPorCategoria[categoria] || 0) + item.valor;
-
-            if (item.valor > 0) {
-                totalReceitas += item.valor;
-            } else {
-                totalDespesas += Math.abs(item.valor);
-            }
-        });
-
-        const resultado = totalReceitas - totalDespesas;
-        const margem = totalReceitas > 0 ? (resultado / totalReceitas) * 100 : 0;
-
-        // Preparar dados por descrição
-        const porDescricao = Object.entries(totaisPorDescricao)
-            .map(([nome, { valor, categoria }]) => ({
-                nome,
-                valor,
-                percentual: (Math.abs(valor) / dadosAno.reduce((acc, i) => acc + Math.abs(i.valor), 0)) * 100,
-                tipo: valor > 0 ? 'receita' : 'despesa',
-                categoria,
-            }))
-            .sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor))
-            .slice(0, 10); // Top 10 descrições
-
-        // Preparar dados por categoria
-        const porCategoria = Object.entries(totaisPorCategoria)
-            .map(([nome, valor]) => ({
-                nome,
-                valor,
-                percentual: (Math.abs(valor) / dadosAno.reduce((acc, i) => acc + Math.abs(i.valor), 0)) * 100,
-                tipo: valor > 0 ? 'receita' : 'despesa',
-            }))
-            .sort((a, b) => Math.abs(b.valor) - Math.abs(a.valor))
-            .slice(0, 8); // Top 8 categorias
-
-        // Preparar dados por mês (simulado - se não tiver data, distribuir)
-        const meses = Array.from({ length: 12 }, (_, i) => {
-            const mes = i + 1;
-            // Distribuição proporcional (exemplo - idealmente viria do backend)
-            const receitas = totalReceitas / 12 * (0.8 + Math.random() * 0.4);
-            const despesas = totalDespesas / 12 * (0.8 + Math.random() * 0.4);
-
-            return {
-                mes,
-                nome: nomeMesAbreviado(mes),
-                receitas: Number(receitas.toFixed(2)),
-                despesas: Number(despesas.toFixed(2)),
-                resultado: Number((receitas - despesas).toFixed(2)),
-            };
-        });
-
-        return {
-            totalReceitas,
-            totalDespesas,
-            resultado,
-            margem,
-            porDescricao,
-            porCategoria,
-            meses,
-        };
-    }, [data, ano]);
-
-    // Dados para o gráfico baseado no tipo selecionado
     const chartData = useMemo(() => {
-        if (!resumo) return [];
+        if (!dashboard) return [];
 
         if (dataType === 'descricao') {
-            return resumo.porDescricao.map(item => ({
-                name: item.nome.length > 20 ? item.nome.substring(0, 20) + '...' : item.nome,
-                nomeCompleto: item.nome,
+            return topDescricoes.map((item) => ({
+                name: item.descricao.length > 20 ? `${item.descricao.substring(0, 20)}...` : item.descricao,
+                nomeCompleto: item.descricao,
                 valor: Math.abs(item.valor),
                 valorOriginal: item.valor,
-                percentual: item.percentual,
+                percentual: item.percentual_sobre_receitas,
                 tipo: item.tipo,
                 categoria: item.categoria,
             }));
         }
 
         if (dataType === 'categoria') {
-            return resumo.porCategoria.map(item => ({
-                name: item.nome.length > 20 ? item.nome.substring(0, 20) + '...' : item.nome,
-                nomeCompleto: item.nome,
+            return topCategorias.map((item) => ({
+                name: item.categoria.length > 20 ? `${item.categoria.substring(0, 20)}...` : item.categoria,
+                nomeCompleto: item.categoria,
                 valor: Math.abs(item.valor),
                 valorOriginal: item.valor,
-                percentual: item.percentual,
+                percentual: item.percentual_sobre_receitas,
                 tipo: item.tipo,
             }));
         }
 
-        return resumo.meses.map(mes => ({
-            name: mes.nome,
+        return dadosMensais.map((mes) => ({
+            name: mes.mes,
             receitas: mes.receitas,
             despesas: mes.despesas,
             resultado: mes.resultado,
         }));
-    }, [resumo, dataType]);
+    }, [dashboard, dataType, topDescricoes, topCategorias, dadosMensais]);
 
-    if (!ano || loading || externalLoading) {
+    if (externalLoading) {
         return (
             <Fade in timeout={500}>
                 <Card
@@ -368,7 +268,7 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
         );
     }
 
-    if (!resumo) {
+    if (!dashboard || !resumo) {
         return (
             <Fade in timeout={500}>
                 <Card
@@ -404,12 +304,12 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                     bgcolor: WHITE,
                     overflow: 'hidden',
                     boxShadow: `0 20px 40px ${alpha(DARK_BG, 0.05)}`,
+                    mb: 3,
                 }}
             >
                 <Box sx={{ height: 6, background: `linear-gradient(90deg, ${GOLD_PRIMARY}, ${GOLD_LIGHT})` }} />
 
                 <CardContent sx={{ p: 3 }}>
-                    {/* Header com controles */}
                     <Stack
                         direction={{ xs: 'column', md: 'row' }}
                         justifyContent="space-between"
@@ -427,27 +327,26 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                     borderRadius: 2,
                                 }}
                             >
-                                <AccountBalanceIcon />
+                               <AccountBalanceIcon />
                             </Avatar>
                             <Box>
                                 <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>
                                     Análise Contábil
                                 </Typography>
                                 <Typography variant="body2" sx={{ color: GRAY_MAIN }}>
-                                    {resumo ? `${data.filter(d => d.ano === ano).length} registros` : 'Selecione um ano'}
+                                    {resumo.label_total_registros || 'Sem dados'}
                                 </Typography>
                             </Box>
                         </Stack>
 
                         <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-                            {/* Seletor de Ano */}
                             <TextField
                                 select
                                 size="small"
                                 label="Ano"
-                                value={ano}
-                                onChange={(e) => setAno(Number(e.target.value))}
-                                sx={{ minWidth: 100 }}
+                                value={ano ?? ''}
+                                onChange={(e) => onAnoChange(e.target.value ? Number(e.target.value) : null)}
+                                sx={{ minWidth: 110 }}
                             >
                                 {anosDisponiveis.map((a) => (
                                     <MenuItem key={a} value={a}>
@@ -456,7 +355,6 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                 ))}
                             </TextField>
 
-                            {/* Seletor de Tipo de Dado */}
                             <ToggleButtonGroup
                                 size="small"
                                 value={dataType}
@@ -476,53 +374,26 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                             >
                                 <ToggleButton value="resultado">
                                     <Timeline fontSize="small" />
-                                    <Typography variant="caption" sx={{ ml: 0.5 }}>Resultado</Typography>
+                                    <Typography variant="caption" sx={{ ml: 0.5 }}>
+                                        Resultado
+                                    </Typography>
                                 </ToggleButton>
                                 <ToggleButton value="descricao">
                                     <DescriptionIcon fontSize="small" />
-                                    <Typography variant="caption" sx={{ ml: 0.5 }}>Por Descrição</Typography>
+                                    <Typography variant="caption" sx={{ ml: 0.5 }}>
+                                        Por Descrição
+                                    </Typography>
                                 </ToggleButton>
                                 <ToggleButton value="categoria">
                                     <CategoryIcon fontSize="small" />
-                                    <Typography variant="caption" sx={{ ml: 0.5 }}>Por Categoria</Typography>
-                                </ToggleButton>
-                            </ToggleButtonGroup>
-
-                            {/* Seletor de Tipo de Gráfico */}
-                            <ToggleButtonGroup
-                                size="small"
-                                value={chartType}
-                                exclusive
-                                onChange={(_, value) => value && setChartType(value)}
-                                sx={{
-                                    '& .MuiToggleButton-root': {
-                                        borderColor: BORDER_LIGHT,
-                                        color: GRAY_MAIN,
-                                        '&.Mui-selected': {
-                                            bgcolor: alpha(GOLD_PRIMARY, 0.1),
-                                            color: GOLD_PRIMARY,
-                                            borderColor: GOLD_PRIMARY,
-                                        },
-                                    },
-                                }}
-                            >
-                                <ToggleButton value="bar">
-                                    <BarChartIcon fontSize="small" />
-                                </ToggleButton>
-                                <ToggleButton value="line">
-                                    <ShowChart fontSize="small" />
-                                </ToggleButton>
-                                <ToggleButton value="area">
-                                    <Timeline fontSize="small" />
-                                </ToggleButton>
-                                <ToggleButton value="pie" disabled={dataType === 'resultado'}>
-                                    <PieChartIcon fontSize="small" />
+                                    <Typography variant="caption" sx={{ ml: 0.5 }}>
+                                        Por Categoria
+                                    </Typography>
                                 </ToggleButton>
                             </ToggleButtonGroup>
                         </Stack>
                     </Stack>
 
-                    {/* Cards de Resumo */}
                     <Grid container spacing={2} sx={{ mb: 3 }}>
                         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
                             <Paper
@@ -539,9 +410,11 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                         <AttachMoney />
                                     </Avatar>
                                     <Box>
-                                        <Typography variant="caption" sx={{ color: GRAY_MAIN }}>Receitas</Typography>
+                                        <Typography variant="caption" sx={{ color: GRAY_MAIN }}>
+                                            Receitas
+                                        </Typography>
                                         <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>
-                                            {money(resumo.totalReceitas)}
+                                            {money(resumo.receitas)}
                                         </Typography>
                                     </Box>
                                 </Stack>
@@ -563,9 +436,11 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                         <TrendingDown />
                                     </Avatar>
                                     <Box>
-                                        <Typography variant="caption" sx={{ color: GRAY_MAIN }}>Despesas</Typography>
+                                        <Typography variant="caption" sx={{ color: GRAY_MAIN }}>
+                                            Despesas
+                                        </Typography>
                                         <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>
-                                            {money(resumo.totalDespesas)}
+                                            {money(resumo.despesas)}
                                         </Typography>
                                     </Box>
                                 </Stack>
@@ -588,13 +463,15 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                             bgcolor: alpha(resumo.resultado >= 0 ? STATUS_COLORS.success : STATUS_COLORS.error, 0.1),
                                             color: resumo.resultado >= 0 ? STATUS_COLORS.success : STATUS_COLORS.error,
                                             width: 40,
-                                            height: 40
+                                            height: 40,
                                         }}
                                     >
                                         {resumo.resultado >= 0 ? <TrendingUp /> : <TrendingDown />}
                                     </Avatar>
                                     <Box>
-                                        <Typography variant="caption" sx={{ color: GRAY_MAIN }}>Resultado</Typography>
+                                        <Typography variant="caption" sx={{ color: GRAY_MAIN }}>
+                                            Resultado
+                                        </Typography>
                                         <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>
                                             {money(resumo.resultado)}
                                         </Typography>
@@ -618,9 +495,11 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                         <Percent />
                                     </Avatar>
                                     <Box>
-                                        <Typography variant="caption" sx={{ color: GRAY_MAIN }}>Margem</Typography>
+                                        <Typography variant="caption" sx={{ color: GRAY_MAIN }}>
+                                            Margem
+                                        </Typography>
                                         <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>
-                                            {formatPercent(resumo.margem)}
+                                            {formatPercent(resumo.margem_percentual)}
                                         </Typography>
                                     </Box>
                                 </Stack>
@@ -628,7 +507,6 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                         </Grid>
                     </Grid>
 
-                    {/* Gráfico Principal */}
                     <Box sx={{ width: '100%', height: 400, mb: 4 }}>
                         <ResponsiveContainer>
                             {dataType !== 'resultado' && chartType === 'pie' ? (
@@ -662,20 +540,20 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                                     {money(Math.abs(originalValue))}
                                                     {props.payload.tipo === 'receita' ? ' (Receita)' : ' (Despesa)'}
                                                 </span>,
-                                                props.payload.nomeCompleto
+                                                props.payload.nomeCompleto,
                                             ];
                                         }}
                                     />
                                 </PieChart>
                             ) : dataType !== 'resultado' ? (
-                                <BarChart data={chartData} layout="vertical">
+                                <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
                                     <CartesianGrid strokeDasharray="3 3" stroke={alpha(GRAY_MAIN, 0.1)} horizontal={false} />
                                     <XAxis
                                         type="number"
                                         tickFormatter={(v) => formatShortNumber(v)}
                                         stroke={GRAY_MAIN}
                                     />
-                                    <YAxis dataKey="name" type="category" width={120} stroke={GRAY_MAIN} />
+                                    <YAxis dataKey="name" type="category" width={140} stroke={GRAY_MAIN} />
                                     <Tooltip
                                         contentStyle={{
                                             backgroundColor: DARK_BG,
@@ -689,19 +567,18 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                                 <span key="value">
                                                     {money(Math.abs(originalValue))}
                                                     {props.payload.tipo === 'receita' ? ' (Receita)' : ' (Despesa)'}
-                                                    {props.payload.categoria && ` • ${props.payload.categoria}`}
+                                                    {props.payload.categoria ? ` • ${props.payload.categoria}` : ''}
                                                 </span>,
-                                                props.payload.nomeCompleto
+                                                props.payload.nomeCompleto,
                                             ];
                                         }}
                                     />
                                     <Bar
                                         dataKey="valor"
-                                        fill={GOLD_PRIMARY}
                                         radius={[0, 4, 4, 0]}
                                         shape={(props: any) => {
-                                            const { fill, x, y, width, height } = props;
-                                            const isPositive = props.payload.valorOriginal > 0;
+                                            const { x, y, width, height } = props;
+                                            const isPositive = props.payload.valorOriginal >= 0;
                                             return (
                                                 <rect
                                                     x={x}
@@ -736,18 +613,14 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                     <Legend />
                                     <Bar dataKey="receitas" name="Receitas" fill={STATUS_COLORS.success} radius={[4, 4, 0, 0]} />
                                     <Bar dataKey="despesas" name="Despesas" fill={STATUS_COLORS.error} radius={[4, 4, 0, 0]} />
-                                    {chartType === 'line' && (
-                                        <Bar dataKey="resultado" name="Resultado" fill={GOLD_PRIMARY} radius={[4, 4, 0, 0]} />
-                                    )}
+                                    <Bar dataKey="resultado" name="Resultado" fill={GOLD_PRIMARY} radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             )}
                         </ResponsiveContainer>
                     </Box>
 
-                    {/* Cards de Detalhamento */}
                     <Grid container spacing={3}>
-                        {/* Por Descrição */}
-                        {resumo.porDescricao.length > 0 && (
+                        {topDescricoes.length > 0 && (
                             <Grid size={{ xs: 12, md: 6 }}>
                                 <Paper
                                     elevation={0}
@@ -764,7 +637,7 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                             Top Descrições
                                         </Typography>
                                         <Chip
-                                            label={`${resumo.porDescricao.length} itens`}
+                                            label={`${topDescricoes.length} itens`}
                                             size="small"
                                             sx={{
                                                 bgcolor: alpha(GOLD_PRIMARY, 0.1),
@@ -774,7 +647,6 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                         />
                                     </Stack>
 
-                                    {/* Carrossel de Descrições */}
                                     <Box
                                         sx={{
                                             position: 'relative',
@@ -784,11 +656,10 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                             },
                                         }}
                                     >
-                                        {/* Botão Esquerdo */}
                                         <IconButton
                                             className="scroll-button"
                                             onClick={() => {
-                                                const container = document.getElementById('descricoes-carousel');
+                                                const container = document.getElementById(`descricoes-carousel-${userId}`);
                                                 if (container) {
                                                     container.scrollBy({ left: -300, behavior: 'smooth' });
                                                 }
@@ -811,9 +682,8 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                             <ChevronLeftIcon />
                                         </IconButton>
 
-                                        {/* Container Scrollável */}
                                         <Box
-                                            id="descricoes-carousel"
+                                            id={`descricoes-carousel-${userId}`}
                                             sx={{
                                                 display: 'flex',
                                                 overflowX: 'auto',
@@ -836,7 +706,7 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                                 },
                                             }}
                                         >
-                                            {resumo.porDescricao.map((item, index) => (
+                                            {topDescricoes.map((item, index) => (
                                                 <Paper
                                                     key={index}
                                                     elevation={0}
@@ -867,10 +737,11 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                                                     textOverflow: 'ellipsis',
                                                                     whiteSpace: 'nowrap',
                                                                 }}
-                                                                title={item.nome}
+                                                                title={item.descricao}
                                                             >
-                                                                {item.nome}
+                                                                {item.descricao}
                                                             </Typography>
+
                                                             {item.categoria && (
                                                                 <Chip
                                                                     label={item.categoria}
@@ -904,7 +775,7 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                                                 </Typography>
                                                             </Box>
                                                             <Chip
-                                                                label={formatPercent(item.percentual)}
+                                                                label={formatPercent(item.percentual_sobre_receitas)}
                                                                 size="small"
                                                                 sx={{
                                                                     bgcolor: alpha(item.tipo === 'receita' ? STATUS_COLORS.success : STATUS_COLORS.error, 0.1),
@@ -916,18 +787,17 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                                         </Stack>
 
                                                         <Typography variant="caption" sx={{ color: GRAY_LIGHT }}>
-                                                            {item.tipo === 'receita' ? 'Receita' : 'Despesa'} • {index + 1}º mais relevante
+                                                            {item.tipo === 'receita' ? 'Receita' : 'Despesa'} • {item.label_rank}
                                                         </Typography>
                                                     </Stack>
                                                 </Paper>
                                             ))}
                                         </Box>
 
-                                        {/* Botão Direito */}
                                         <IconButton
                                             className="scroll-button"
                                             onClick={() => {
-                                                const container = document.getElementById('descricoes-carousel');
+                                                const container = document.getElementById(`descricoes-carousel-${userId}`);
                                                 if (container) {
                                                     container.scrollBy({ left: 300, behavior: 'smooth' });
                                                 }
@@ -954,8 +824,7 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                             </Grid>
                         )}
 
-                        {/* Por Categoria */}
-                        {resumo.porCategoria.length > 0 && (
+                        {topCategorias.length > 0 && (
                             <Grid size={{ xs: 12, md: 6 }}>
                                 <Paper
                                     elevation={0}
@@ -972,7 +841,7 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                             Top Categorias
                                         </Typography>
                                         <Chip
-                                            label={`${resumo.porCategoria.length} itens`}
+                                            label={`${topCategorias.length} itens`}
                                             size="small"
                                             sx={{
                                                 bgcolor: alpha(GOLD_PRIMARY, 0.1),
@@ -982,7 +851,6 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                         />
                                     </Stack>
 
-                                    {/* Carrossel de Categorias */}
                                     <Box
                                         sx={{
                                             position: 'relative',
@@ -992,11 +860,10 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                             },
                                         }}
                                     >
-                                        {/* Botão Esquerdo */}
                                         <IconButton
                                             className="scroll-button"
                                             onClick={() => {
-                                                const container = document.getElementById('categorias-carousel');
+                                                const container = document.getElementById(`categorias-carousel-${userId}`);
                                                 if (container) {
                                                     container.scrollBy({ left: -300, behavior: 'smooth' });
                                                 }
@@ -1019,9 +886,8 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                             <ChevronLeftIcon />
                                         </IconButton>
 
-                                        {/* Container Scrollável */}
                                         <Box
-                                            id="categorias-carousel"
+                                            id={`categorias-carousel-${userId}`}
                                             sx={{
                                                 display: 'flex',
                                                 overflowX: 'auto',
@@ -1044,7 +910,7 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                                 },
                                             }}
                                         >
-                                            {resumo.porCategoria.map((item, index) => (
+                                            {topCategorias.map((item, index) => (
                                                 <Paper
                                                     key={index}
                                                     elevation={0}
@@ -1074,9 +940,9 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                                                 textOverflow: 'ellipsis',
                                                                 whiteSpace: 'nowrap',
                                                             }}
-                                                            title={item.nome}
+                                                            title={item.categoria}
                                                         >
-                                                            {item.nome}
+                                                            {item.categoria}
                                                         </Typography>
 
                                                         <Divider sx={{ borderColor: BORDER_LIGHT }} />
@@ -1097,7 +963,7 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                                                 </Typography>
                                                             </Box>
                                                             <Chip
-                                                                label={formatPercent(item.percentual)}
+                                                                label={formatPercent(item.percentual_sobre_receitas)}
                                                                 size="small"
                                                                 sx={{
                                                                     bgcolor: alpha(item.tipo === 'receita' ? STATUS_COLORS.success : STATUS_COLORS.error, 0.1),
@@ -1109,18 +975,17 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                                                         </Stack>
 
                                                         <Typography variant="caption" sx={{ color: GRAY_LIGHT }}>
-                                                            {item.tipo === 'receita' ? 'Receita' : 'Despesa'} • {index + 1}º mais relevante
+                                                            {item.tipo === 'receita' ? 'Receita' : 'Despesa'} • {item.label_rank}
                                                         </Typography>
                                                     </Stack>
                                                 </Paper>
                                             ))}
                                         </Box>
 
-                                        {/* Botão Direito */}
                                         <IconButton
                                             className="scroll-button"
                                             onClick={() => {
-                                                const container = document.getElementById('categorias-carousel');
+                                                const container = document.getElementById(`categorias-carousel-${userId}`);
                                                 if (container) {
                                                     container.scrollBy({ left: 300, behavior: 'smooth' });
                                                 }
@@ -1148,12 +1013,11 @@ export default function ContabilidadeChart({ userId, data, loading: externalLoad
                         )}
                     </Grid>
 
-                    {/* Rodapé */}
                     <Divider sx={{ my: 3, borderColor: BORDER_LIGHT }} />
 
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
                         <Typography variant="caption" sx={{ color: GRAY_LIGHT }}>
-                            {data.filter(d => d.ano === ano).length} registros contábeis em {ano}
+                            {resumo.label_total_registros}
                         </Typography>
                         <MuiTooltip title="Dados atualizados em tempo real">
                             <Chip

@@ -2,17 +2,13 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 
-
 import {
   Box,
   Container,
-
   Card,
-
   Typography,
   Toolbar,
   Divider,
-
   alpha,
 } from '@mui/material';
 
@@ -30,15 +26,66 @@ import ContabilidadeChart from '@/components/contabilidade/ContabilidadeChart';
 const STORAGE_KEY = 'selectedClient';
 const BRAND = '#E6C969';
 
+type ContabilidadeDashboardResumo = {
+  receitas: number;
+  despesas: number;
+  resultado: number;
+  margem_percentual: number;
+  total_registros_ano: number;
+  label_total_registros: string;
+};
+
+type ContabilidadeDashboardMensal = {
+  mes_numero: number;
+  mes: string;
+  receitas: number;
+  despesas: number;
+  resultado: number;
+};
+
+type ContabilidadeDashboardTopDescricao = {
+  rank: number;
+  descricao: string;
+  categoria: string;
+  valor: number;
+  total_itens: number;
+  percentual_sobre_receitas: number;
+  tipo: 'receita' | 'despesa';
+  label_rank: string;
+};
+
+type ContabilidadeDashboardTopCategoria = {
+  rank: number;
+  categoria: string;
+  valor: number;
+  total_itens: number;
+  percentual_sobre_receitas: number;
+  tipo: 'receita' | 'despesa';
+  label_rank: string;
+};
+
+type ContabilidadeDashboardFiltros = {
+  user_id: number;
+  ano: number;
+  anos_disponiveis: number[];
+};
+
+type ContabilidadeDashboard = {
+  filtros: ContabilidadeDashboardFiltros;
+  resumo: ContabilidadeDashboardResumo;
+  mensal: ContabilidadeDashboardMensal[];
+  top_descricoes: ContabilidadeDashboardTopDescricao[];
+  top_categorias: ContabilidadeDashboardTopCategoria[];
+};
+
 function pickApiError(data: any): string {
   if (!data) return 'Erro inesperado.';
   if (typeof data === 'string') return data;
   if (typeof data.detail === 'string') return data.detail;
   if (typeof data.error === 'string') return data.error;
+  if (typeof data.details === 'string') return data.details;
   return 'Falha ao processar a requisição.';
 }
-
-
 
 function getSelectedClientFromStorage(): SelectedClient | null {
   try {
@@ -62,17 +109,20 @@ export default function ContabilidadeListarPage() {
   const [mounted, setMounted] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<SelectedClient | null>(null);
-  const [anoFilter, setAnoFilter] = useState<string>(new Date().getFullYear().toString());
 
+  const [anoFilter, setAnoFilter] = useState<string>('');
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState<10 | 25 | 50 | 100>(10);
   const [pagination, setPagination] = useState<Pagination | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+
   const [rows, setRows] = useState<ContabilidadeData[]>([]);
+  const [dashboard, setDashboard] = useState<ContabilidadeDashboard | null>(null);
+
   const [lastUpdated, setLastUpdated] = useState<string>('');
 
-  /* ALERT */
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertSeverity, setAlertSeverity] = useState<AlertType>('info');
@@ -83,10 +133,53 @@ export default function ContabilidadeListarPage() {
     setAlertOpen(true);
   };
 
-  // Garantir que o componente está montado no cliente
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const loadDashboard = useCallback(async () => {
+    const client = getSelectedClientFromStorage();
+    setSelectedClient(client);
+
+    if (!client?.id) {
+      setDashboard(null);
+      setDashboardLoading(false);
+      return;
+    }
+
+    setDashboardLoading(true);
+
+    try {
+      const params = new URLSearchParams();
+      params.append('user_id', String(client.id));
+
+      if (anoFilter) {
+        params.append('ano', anoFilter);
+      }
+
+      const res = await services(`/contabilidade/dashboard?${params.toString()}`, {
+        method: 'GET',
+      });
+
+      if (!res.success) {
+        showAlert(pickApiError(res.data), 'error');
+        setDashboard(null);
+        return;
+      }
+
+      const dashboardData = res.data as ContabilidadeDashboard;
+      setDashboard(dashboardData);
+
+      if (!anoFilter && dashboardData?.filtros?.ano) {
+        setAnoFilter(String(dashboardData.filtros.ano));
+      }
+    } catch (error) {
+      showAlert('Erro ao carregar dashboard contábil', 'error');
+      setDashboard(null);
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, [anoFilter]);
 
   const loadData = useCallback(async () => {
     const client = getSelectedClientFromStorage();
@@ -137,40 +230,56 @@ export default function ContabilidadeListarPage() {
   }, [page, perPage, anoFilter]);
 
   useEffect(() => {
-    if (mounted) {
-      loadData();
-    }
-  }, [loadData, mounted]);
+    if (!mounted) return;
+    loadDashboard();
+  }, [mounted, loadDashboard]);
 
-  // Listener para troca de cliente no sidebar
+  useEffect(() => {
+    if (!mounted) return;
+    loadData();
+  }, [mounted, loadData]);
+
   useEffect(() => {
     if (!mounted) return;
 
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) {
         setPage(1);
-        setTimeout(() => loadData(), 0);
+        setSearch('');
+        setAnoFilter('');
+        setTimeout(() => {
+          loadDashboard();
+          loadData();
+        }, 0);
       }
     };
+
     const onFocus = () => {
       const current = getSelectedClientFromStorage();
       const prevId = selectedClient?.id ?? null;
       const nextId = current?.id ?? null;
+
       if (prevId !== nextId) {
         setSelectedClient(current);
         setPage(1);
-        setTimeout(() => loadData(), 0);
+        setSearch('');
+        setAnoFilter('');
+        setTimeout(() => {
+          loadDashboard();
+          loadData();
+        }, 0);
       }
     };
+
     window.addEventListener('storage', onStorage);
     window.addEventListener('focus', onFocus);
+
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('focus', onFocus);
     };
-  }, [selectedClient?.id, loadData, mounted]);
+  }, [selectedClient?.id, loadDashboard, loadData, mounted]);
 
-  // Filtro Client-Side (Busca)
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
@@ -180,7 +289,8 @@ export default function ContabilidadeListarPage() {
         r.descricao,
         r.categoria,
         String(r.valor),
-        String(r.ano)
+        String(r.ano),
+        (r as any).data_registro ?? '',
       ]
         .filter((x) => x !== null && x !== undefined)
         .join(' ')
@@ -196,33 +306,34 @@ export default function ContabilidadeListarPage() {
 
   const totalItems = pagination?.total_items ?? filtered.length;
 
-  // Não renderizar nada até o componente estar montado no cliente
   if (!mounted) {
     return null;
   }
 
   if (!selectedClient) {
-    return <NoClientState onGoToClients={() => window.location.href = '/clients'} />;
+    return <NoClientState onGoToClients={() => (window.location.href = '/clients')} />;
   }
 
   return (
     <Box sx={{ bgcolor: '#F8FAFC', minHeight: '100vh', py: 4 }}>
       <Container maxWidth={false} sx={{ maxWidth: '95%', mx: 'auto' }}>
-        {/* Header - sem Fade */}
         <ListHeader
           client={selectedClient}
-          totalItems={totalItems}
-          totalValue={totalPagina}
+          totalItems={dashboard?.resumo?.total_registros_ano ?? totalItems}
+          totalValue={dashboard?.resumo?.resultado ?? totalPagina}
         />
-
 
         <ContabilidadeChart
           userId={selectedClient.id}
-          data={rows}
-          loading={loading}
+          ano={anoFilter ? Number(anoFilter) : null}
+          onAnoChange={(nextAno) => {
+            setAnoFilter(nextAno ? String(nextAno) : '');
+            setPage(1);
+          }}
+          dashboard={dashboard}
+          loading={dashboardLoading}
         />
 
-        {/* Card Principal - sem Fade */}
         <Card
           elevation={0}
           sx={{
@@ -268,18 +379,19 @@ export default function ContabilidadeListarPage() {
                 setPerPage(value as 10 | 25 | 50 | 100);
                 setPage(1);
               }}
-              onRefresh={loadData}
-              loading={loading}
+              onRefresh={async () => {
+                await loadDashboard();
+                await loadData();
+              }}
+              loading={loading || dashboardLoading}
               brand={BRAND}
             />
           </Toolbar>
 
           <Divider sx={{ borderColor: alpha(BRAND, 0.1) }} />
 
-          {/* Tabela */}
           <DataTable data={filtered} loading={loading} brand={BRAND} />
 
-          {/* Footer com Paginação */}
           <Box sx={{ p: 2, bgcolor: '#F8FAFC', borderTop: `1px solid ${alpha(BRAND, 0.1)}` }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <Typography variant="caption" sx={{ color: '#94A3B8' }}>
@@ -299,7 +411,12 @@ export default function ContabilidadeListarPage() {
         </Card>
       </Container>
 
-      <AppAlert open={alertOpen} message={alertMessage} severity={alertSeverity} onClose={() => setAlertOpen(false)} />
+      <AppAlert
+        open={alertOpen}
+        message={alertMessage}
+        severity={alertSeverity}
+        onClose={() => setAlertOpen(false)}
+      />
     </Box>
   );
 }

@@ -29,7 +29,7 @@ interface ClientHeaderProps {
 
 export default function ClientHeader({ client }: ClientHeaderProps) {
   // Ajuste o path conforme onde você salvou o arquivo no /public
-  const XLSX_CONTABILIDADE_MODEL_PATH = '/xlsx_models/modelo-contabilidade-sejaap.xlsx';
+  const XLSX_CONTABILIDADE_MODEL_PATH = './xlsx_models/modelo-contabilidade-sejaap.xlsx';
 
   const downloadContabilidadeModel = () => {
     try {
