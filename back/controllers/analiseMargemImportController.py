@@ -1,11 +1,13 @@
 import re
 from io import BytesIO
 from decimal import Decimal, InvalidOperation
-
 from flask import request, jsonify
 from openpyxl import load_workbook
-
 from config.db import get_connection
+
+import pandas as pd
+from datetime import datetime, date
+
 
 # Reaproveita suas funções de salvar docs
 from controllers.uploadDocsController import (
@@ -156,121 +158,124 @@ def _read_xlsx_rows(file_bytes: bytes) -> list[dict]:
 # Nova rota: upload + import
 # -------------------------
 def import_analise_margem_xlsx(current_user=None):
-   
     file = request.files.get("file")
     id_cliente = request.form.get("id_cliente")
-    categoria = (request.form.get("categoria") or DOCS_IMPORT_CATEGORIA_DEFAULT).strip()
+    categoria_doc = (request.form.get("categoria") or "Analise de Margem").strip()
 
-    if not file:
-        return jsonify({"error": "Missing file", "details": "field 'file' is required"}), 400
-    if not id_cliente:
-        return jsonify({"error": "Missing id_cliente"}), 400
+    if not file or not id_cliente:
+        return jsonify({"error": "Arquivo e id_cliente são obrigatórios"}), 400
 
     try:
         user_id = int(id_cliente)
-        if user_id <= 0:
-            raise ValueError()
-    except Exception:
-        return jsonify({"error": "Invalid id_cliente", "details": "id_cliente must be a positive integer"}), 400
+    except:
+        return jsonify({"error": "id_cliente inválido"}), 400
 
     file_bytes = file.read()
-    if not file_bytes:
-        return jsonify({"error": "Empty file"}), 400
+    
+    try:
+        file.seek(0)
+        filename = file.filename.lower()
+        if filename.endswith('.csv'):
+            try:
+                df = pd.read_csv(BytesIO(file_bytes), sep=',')
+            except:
+                df = pd.read_csv(BytesIO(file_bytes), sep=';')
+        else:
+            df = pd.read_excel(BytesIO(file_bytes))
+        
+        parsed_data = df.to_dict(orient="records")
+    except Exception as e:
+        return jsonify({"error": "Erro ao ler arquivo", "details": str(e)}), 400
 
     conn = None
     try:
         conn = get_connection()
         cur = conn.cursor()
 
-        # valida cliente
-        if not _customer_id_exists(cur, user_id):
-            return jsonify(
-                {"error": "Invalid id_cliente", "details": "id_cliente must exist in public.clientes.id"}
-            ), 400
-
-        # 1) salva arquivo físico + registra em docs_clientes
+        # Salva histórico do arquivo
         file.stream = BytesIO(file_bytes)
         file.stream.seek(0)
-
-        caminho_arquivo, err = _save_file_for_customer(cur, user_id, categoria, file)
-        if err:
-            return err
+        caminho_arquivo, _ = _save_file_for_customer(cur, user_id, categoria_doc, file)
 
         cur.execute(
-            """
-            INSERT INTO public.docs_clientes (id_cliente, caminho_arquivo, categoria)
-            VALUES (%s, %s, %s)
-            RETURNING id, id_cliente, caminho_arquivo, categoria, data_envio;
-            """,
-            (user_id, caminho_arquivo, categoria),
+            "INSERT INTO public.docs_clientes (id_cliente, caminho_arquivo, categoria) VALUES (%s, %s, %s) RETURNING id",
+            (user_id, caminho_arquivo, categoria_doc)
         )
-        doc_row = cur.fetchone()
+        doc_id = cur.fetchone()[0]
 
-        # 2) parse XLSX
-        mapped = _read_xlsx_rows(file_bytes)
-        if not mapped:
-            conn.rollback()
-            return jsonify({"error": "No rows found", "details": "XLSX has no data rows"}), 400
-
-        # 3) monta payloads e insere em lote
         insert_sql = """
             INSERT INTO public.analise_margem
-            (user_id, produto_ou_servico, custo, hora_homem, imposto, margem_bruta, comissao, frete)
-            VALUES
-            (%s,%s,%s,%s,%s,%s,%s,%s);
+            (user_id, produto_ou_servico, custo, hora_homem, imposto, margem_bruta, comissao, frete, data_registro)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);
         """
 
-        values = []
-        for it in mapped:
-            # produto_ou_servico é obrigatório no seu CREATE (junto do user_id)
-            if not it.get("produto_ou_servico"):
-                # pula linha vazia nessa coluna
-                continue
+        values_to_insert = []
+        for item in parsed_data:
+            # Inicializa variáveis
+            data_raw = None
+            prod_serv = None
+            custo = 0
+            hora_homem = 0
+            imposto = 0
+            margem_bruta = 0
+            comissao = 0
+            frete = 0
 
-            values.append(
-                (
-                    user_id,
-                    it.get("produto_ou_servico"),
-                    str(it["custo"]) if it.get("custo") is not None else None,
-                    str(it["hora_homem"]) if it.get("hora_homem") is not None else None,
-                    str(it["imposto"]) if it.get("imposto") is not None else None,
-                    str(it["margem_bruta"]) if it.get("margem_bruta") is not None else None,
-                    str(it["comissao"]) if it.get("comissao") is not None else None,
-                    str(it["frete"]) if it.get("frete") is not None else None,
-                )
-            )
+            # BUSCA DINÂMICA PARA TODOS OS CAMPOS
+            for key, value in item.items():
+                k_norm = str(key).strip().lower().replace(" ", "").replace("-", "").replace("_", "").replace("ç", "c").replace("ã", "a")
+                
+                if "registro" in k_norm or "data" in k_norm:
+                    data_raw = value
+                elif "produto" in k_norm or "servico" in k_norm or "desc" in k_norm:
+                    prod_serv = value
+                elif "custo" in k_norm:
+                    custo = value
+                elif "hora" in k_norm:
+                    hora_homem = value
+                elif "imposto" in k_norm:
+                    imposto = value
+                elif "margem" in k_norm:
+                    margem_bruta = value
+                elif "comissao" in k_norm:
+                    comissao = value
+                elif "frete" in k_norm:
+                    frete = value
 
-        if not values:
-            conn.rollback()
-            return jsonify(
-                {"error": "No valid rows", "details": "No rows with 'produto_ou_servico' found"}
-            ), 400
+            if not prod_serv: continue
 
-        cur.executemany(insert_sql, values)
-        conn.commit()
+            # Tratamento da Data
+            data_formatada = None
+            if data_raw and str(data_raw).lower() != 'nan':
+                if isinstance(data_raw, (date, datetime)):
+                    data_formatada = data_raw if isinstance(data_raw, date) else data_raw.date()
+                elif isinstance(data_raw, str) and data_raw.strip():
+                    try:
+                        data_formatada = datetime.strptime(data_raw.strip().split(" ")[0], "%d/%m/%Y").date()
+                    except:
+                        try: data_formatada = date.fromisoformat(data_raw.strip().split(" ")[0])
+                        except: data_formatada = None
 
-        doc_json = {
-            "id": doc_row[0],
-            "id_cliente": doc_row[1],
-            "caminho_arquivo": doc_row[2],
-            "categoria": doc_row[3],
-            "data_envio": str(doc_row[4]) if doc_row[4] else None,
-        }
+            values_to_insert.append((
+                user_id,
+                str(prod_serv),
+                float(custo) if custo and str(custo).lower() != 'nan' else 0,
+                float(hora_homem) if hora_homem and str(hora_homem).lower() != 'nan' else 0,
+                float(imposto) if imposto and str(imposto).lower() != 'nan' else 0,
+                float(margem_bruta) if margem_bruta and str(margem_bruta).lower() != 'nan' else 0,
+                float(comissao) if comissao and str(comissao).lower() != 'nan' else 0,
+                float(frete) if frete and str(frete).lower() != 'nan' else 0,
+                data_formatada
+            ))
 
-        return jsonify(
-            {
-                "message": "XLSX imported and analise_margem rows created",
-                "doc": doc_json,
-                "rows_mapped": len(mapped),
-                "rows_inserted": len(values),
-                "mapped_preview": mapped[:5],
-            }
-        ), 201
+        if values_to_insert:
+            cur.executemany(insert_sql, values_to_insert)
+            conn.commit()
+
+        return jsonify({"message": "Importado com sucesso", "doc_id": doc_id, "rows": len(values_to_insert)}), 201
 
     except Exception as e:
-        if conn:
-            conn.rollback()
-        return jsonify({"error": "import failed", "details": str(e)}), 500
+        if conn: conn.rollback()
+        return jsonify({"error": str(e)}), 500
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
