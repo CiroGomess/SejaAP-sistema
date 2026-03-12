@@ -223,3 +223,261 @@ def get_contabilidade_dados(current_user=None):
         return jsonify({"error": "Fetch failed", "details": str(e)}), 500
     finally:
         if conn: conn.close()
+        
+        
+def get_contabilidade_dashboard(current_user=None):
+    """
+    GET /contabilidade/dashboard?user_id=10&ano=2026
+
+    Regras:
+    - filtro principal pelo campo ano
+    - gráfico mensal pelo mês de data_registro
+    - receitas = soma dos valores positivos
+    - despesas = soma absoluta dos valores negativos
+    - resultado = receitas - despesas
+    - margem_percentual = resultado / receitas * 100
+    """
+    user_id = request.args.get("user_id", type=int)
+    ano = request.args.get("ano", type=int)
+
+    if not user_id:
+        return jsonify({"error": "Missing user_id"}), 400
+
+    conn = None
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+
+        # =========================
+        # Anos disponíveis
+        # =========================
+        cur.execute(
+            """
+            SELECT DISTINCT ano
+            FROM public.contabilidade_dados
+            WHERE user_id = %s
+            ORDER BY ano DESC;
+            """,
+            (user_id,),
+        )
+        anos_disponiveis = [int(r[0]) for r in cur.fetchall() if r[0] is not None]
+
+        if not anos_disponiveis:
+            return jsonify({
+                "filtros": {
+                    "user_id": user_id,
+                    "ano": ano,
+                    "anos_disponiveis": [],
+                },
+                "resumo": {
+                    "receitas": 0.0,
+                    "despesas": 0.0,
+                    "resultado": 0.0,
+                    "margem_percentual": 0.0,
+                    "total_registros_ano": 0,
+                    "label_total_registros": "0 registros contábeis"
+                },
+                "mensal": [],
+                "top_descricoes": [],
+                "top_categorias": [],
+            }), 200
+
+        ano_filtrado = ano if ano else anos_disponiveis[0]
+
+        # =========================
+        # Total de registros no ano
+        # =========================
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM public.contabilidade_dados
+            WHERE user_id = %s AND ano = %s;
+            """,
+            (user_id, ano_filtrado),
+        )
+        total_registros_ano = cur.fetchone()[0] or 0
+
+        # =========================
+        # Totais principais
+        # Receita = valor positivo
+        # Despesa = valor negativo (em valor absoluto)
+        # =========================
+        cur.execute(
+            """
+            SELECT
+                COALESCE(SUM(CASE WHEN valor > 0 THEN valor ELSE 0 END), 0) AS receitas,
+                COALESCE(SUM(CASE WHEN valor < 0 THEN ABS(valor) ELSE 0 END), 0) AS despesas
+            FROM public.contabilidade_dados
+            WHERE user_id = %s AND ano = %s;
+            """,
+            (user_id, ano_filtrado),
+        )
+        totals_row = cur.fetchone()
+
+        receitas = float(totals_row[0] or 0)
+        despesas = float(totals_row[1] or 0)
+        resultado = receitas - despesas
+        margem_percentual = ((resultado / receitas) * 100) if receitas > 0 else 0.0
+
+        # =========================
+        # Gráfico mensal
+        # Agora usa data_registro
+        # Continua respeitando o ano do filtro pela coluna "ano"
+        # =========================
+        cur.execute(
+            """
+            SELECT
+                EXTRACT(MONTH FROM data_registro)::INT AS mes,
+                COALESCE(SUM(CASE WHEN valor > 0 THEN valor ELSE 0 END), 0) AS receitas,
+                COALESCE(SUM(CASE WHEN valor < 0 THEN ABS(valor) ELSE 0 END), 0) AS despesas
+            FROM public.contabilidade_dados
+            WHERE user_id = %s
+              AND ano = %s
+              AND data_registro IS NOT NULL
+            GROUP BY EXTRACT(MONTH FROM data_registro)
+            ORDER BY mes ASC;
+            """,
+            (user_id, ano_filtrado),
+        )
+
+        month_map = {
+            1: "Jan",
+            2: "Fev",
+            3: "Mar",
+            4: "Abr",
+            5: "Mai",
+            6: "Jun",
+            7: "Jul",
+            8: "Ago",
+            9: "Set",
+            10: "Out",
+            11: "Nov",
+            12: "Dez",
+        }
+
+        mensal_base = {
+            i: {
+                "mes_numero": i,
+                "mes": month_map[i],
+                "receitas": 0.0,
+                "despesas": 0.0,
+                "resultado": 0.0,
+            }
+            for i in range(1, 13)
+        }
+
+        for row in cur.fetchall():
+            mes = int(row[0] or 0)
+            if mes in mensal_base:
+                receitas_mes = float(row[1] or 0)
+                despesas_mes = float(row[2] or 0)
+                mensal_base[mes] = {
+                    "mes_numero": mes,
+                    "mes": month_map[mes],
+                    "receitas": round(receitas_mes, 2),
+                    "despesas": round(despesas_mes, 2),
+                    "resultado": round(receitas_mes - despesas_mes, 2),
+                }
+
+        mensal = [mensal_base[i] for i in range(1, 13)]
+
+        # =========================
+        # Top descrições
+        # Ordena pelo maior valor absoluto total
+        # =========================
+        cur.execute(
+            """
+            SELECT
+                descricao,
+                COALESCE(categoria, 'Sem categoria') AS categoria,
+                COALESCE(SUM(valor), 0) AS total_valor,
+                COALESCE(SUM(ABS(valor)), 0) AS total_absoluto,
+                COUNT(*) AS total_itens
+            FROM public.contabilidade_dados
+            WHERE user_id = %s AND ano = %s
+            GROUP BY descricao, COALESCE(categoria, 'Sem categoria')
+            ORDER BY total_absoluto DESC, descricao ASC
+            LIMIT 10;
+            """,
+            (user_id, ano_filtrado),
+        )
+
+        top_descricoes = []
+        rows_descricoes = cur.fetchall()
+
+        for idx, row in enumerate(rows_descricoes, start=1):
+            valor_item = float(row[2] or 0)
+            percentual = ((abs(valor_item) / receitas) * 100) if receitas > 0 else 0.0
+
+            top_descricoes.append({
+                "rank": idx,
+                "descricao": row[0],
+                "categoria": row[1],
+                "valor": round(valor_item, 2),
+                "total_itens": int(row[4] or 0),
+                "percentual_sobre_receitas": round(percentual, 2),
+                "tipo": "receita" if valor_item >= 0 else "despesa",
+                "label_rank": f"{idx}º mais relevante",
+            })
+
+        # =========================
+        # Top categorias
+        # Ordena pelo maior valor absoluto total
+        # =========================
+        cur.execute(
+            """
+            SELECT
+                COALESCE(categoria, 'Sem categoria') AS categoria,
+                COALESCE(SUM(valor), 0) AS total_valor,
+                COALESCE(SUM(ABS(valor)), 0) AS total_absoluto,
+                COUNT(*) AS total_itens
+            FROM public.contabilidade_dados
+            WHERE user_id = %s AND ano = %s
+            GROUP BY COALESCE(categoria, 'Sem categoria')
+            ORDER BY total_absoluto DESC, categoria ASC
+            LIMIT 10;
+            """,
+            (user_id, ano_filtrado),
+        )
+
+        top_categorias = []
+        rows_categorias = cur.fetchall()
+
+        for idx, row in enumerate(rows_categorias, start=1):
+            valor_cat = float(row[1] or 0)
+            percentual = ((abs(valor_cat) / receitas) * 100) if receitas > 0 else 0.0
+
+            top_categorias.append({
+                "rank": idx,
+                "categoria": row[0],
+                "valor": round(valor_cat, 2),
+                "total_itens": int(row[3] or 0),
+                "percentual_sobre_receitas": round(percentual, 2),
+                "tipo": "receita" if valor_cat >= 0 else "despesa",
+                "label_rank": f"{idx}º mais relevante",
+            })
+
+        return jsonify({
+            "filtros": {
+                "user_id": user_id,
+                "ano": ano_filtrado,
+                "anos_disponiveis": anos_disponiveis,
+            },
+            "resumo": {
+                "receitas": round(receitas, 2),
+                "despesas": round(despesas, 2),
+                "resultado": round(resultado, 2),
+                "margem_percentual": round(margem_percentual, 2),
+                "total_registros_ano": total_registros_ano,
+                "label_total_registros": f"{total_registros_ano} registros contábeis em {ano_filtrado}",
+            },
+            "mensal": mensal,
+            "top_descricoes": top_descricoes,
+            "top_categorias": top_categorias,
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": "Dashboard fetch failed", "details": str(e)}), 500
+    finally:
+        if conn:
+            conn.close()

@@ -6,7 +6,8 @@ from flask import Blueprint, request, jsonify
 # Importa as funções do controller
 from controllers.contabilidadeController import (
     upload_contabilidade,
-    get_contabilidade_dados
+    get_contabilidade_dados,
+    get_contabilidade_dashboard,
 )
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me")
@@ -59,3 +60,11 @@ def route_get_contabilidade(current_user):
     # A mágica da paginação acontece dentro do controller, 
     # então aqui só precisamos chamar a função.
     return get_contabilidade_dados(current_user)
+
+@contabilidade_routes.get("/contabilidade/dashboard")
+@token_required
+def route_get_contabilidade_dashboard(current_user):
+    """
+    GET /contabilidade/dashboard?user_id=10&ano=2026
+    """
+    return get_contabilidade_dashboard(current_user)
