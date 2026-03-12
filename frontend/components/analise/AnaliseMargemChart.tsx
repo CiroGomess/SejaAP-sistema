@@ -9,9 +9,7 @@ import {
   Stack,
   Avatar,
   alpha,
-
   Chip,
-
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
@@ -37,7 +35,6 @@ const GOLD_LIGHT = '#F5E6B8';
 const DARK_BG = '#0F172A';
 const WHITE = '#FFFFFF';
 const GRAY_MAIN = '#64748B';
-const GRAY_LIGHT = '#94A3B8';
 const BORDER_LIGHT = 'rgba(100, 116, 139, 0.2)';
 const TEXT_DARK = '#0F172A';
 
@@ -49,17 +46,16 @@ const STATUS_COLORS = {
   purple: '#8B5CF6',
 };
 
+type ChartItem = {
+  id: number;
+  produto_ou_servico: string;
+  margem_bruta: number;
+  custo: number;
+};
+
 interface AnaliseMargemChartProps {
-  data: Array<{
-    id: number;
-    produto_ou_servico: string;
-    custo: number;
-    hora_homem: number;
-    frete: number;
-    imposto: number;
-    comissao: number;
-    margem_bruta: number;
-  }>;
+  dataMargem: ChartItem[];
+  dataCusto: ChartItem[];
   loading?: boolean;
 }
 
@@ -72,29 +68,33 @@ function moneyBR(value: number): string {
   });
 }
 
-export default function AnaliseMargemChart({ data, loading }: AnaliseMargemChartProps) {
-  const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
+export default function AnaliseMargemChart({
+  dataMargem,
+  dataCusto,
+  loading,
+}: AnaliseMargemChartProps) {
   const [orderBy, setOrderBy] = useState<'margem' | 'custo'>('margem');
 
-  const chartData = useMemo(() => {
-    const sorted = [...data]
-      .sort((a, b) => {
-        if (orderBy === 'margem') {
-          return b.margem_bruta - a.margem_bruta;
-        }
-        return b.custo - a.custo;
-      })
-      .slice(0, 10); // Top 10
+  const sourceData = useMemo(() => {
+    return orderBy === 'margem' ? dataMargem : dataCusto;
+  }, [orderBy, dataMargem, dataCusto]);
 
-    return sorted.map(item => ({
-      name: item.produto_ou_servico.length > 15 
-        ? item.produto_ou_servico.substring(0, 15) + '...' 
-        : item.produto_ou_servico,
+  const chartData = useMemo(() => {
+    return sourceData.map((item) => ({
+      id: item.id,
+      name:
+        item.produto_ou_servico.length > 18
+          ? `${item.produto_ou_servico.substring(0, 18)}...`
+          : item.produto_ou_servico,
       nomeCompleto: item.produto_ou_servico,
       margem: item.margem_bruta,
       custo: item.custo,
     }));
-  }, [data, orderBy]);
+  }, [sourceData]);
+
+  const totalItems = useMemo(() => {
+    return Math.max(dataMargem.length, dataCusto.length);
+  }, [dataMargem.length, dataCusto.length]);
 
   const getBarColor = (value: number) => {
     if (value > 10000) return STATUS_COLORS.success;
@@ -103,9 +103,17 @@ export default function AnaliseMargemChart({ data, loading }: AnaliseMargemChart
     return STATUS_COLORS.error;
   };
 
-  if (loading || data.length === 0) {
+  if (loading || (dataMargem.length === 0 && dataCusto.length === 0)) {
     return (
-      <Card elevation={0} sx={{ borderRadius: 4, border: `1px solid ${BORDER_LIGHT}`, bgcolor: WHITE, p: 3 }}>
+      <Card
+        elevation={0}
+        sx={{
+          borderRadius: 4,
+          border: `1px solid ${BORDER_LIGHT}`,
+          bgcolor: WHITE,
+          p: 3,
+        }}
+      >
         <Typography sx={{ color: GRAY_MAIN, textAlign: 'center' }}>
           {loading ? 'Carregando dados...' : 'Nenhum dado disponível'}
         </Typography>
@@ -114,21 +122,36 @@ export default function AnaliseMargemChart({ data, loading }: AnaliseMargemChart
   }
 
   return (
-    <Card elevation={0} sx={{ borderRadius: 4, border: `1px solid ${BORDER_LIGHT}`, bgcolor: WHITE, overflow: 'hidden' }}>
+    <Card
+      elevation={0}
+      sx={{
+        borderRadius: 4,
+        border: `1px solid ${BORDER_LIGHT}`,
+        bgcolor: WHITE,
+        overflow: 'hidden',
+      }}
+    >
       <Box sx={{ height: 6, background: `linear-gradient(90deg, ${GOLD_PRIMARY}, ${GOLD_LIGHT})` }} />
-      
+
       <CardContent sx={{ p: 3 }}>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
           <Stack direction="row" spacing={1.5} alignItems="center">
-            <Avatar sx={{ bgcolor: alpha(GOLD_PRIMARY, 0.1), color: GOLD_PRIMARY, width: 40, height: 40 }}>
+            <Avatar
+              sx={{
+                bgcolor: alpha(GOLD_PRIMARY, 0.1),
+                color: GOLD_PRIMARY,
+                width: 40,
+                height: 40,
+              }}
+            >
               <BarChartIcon />
             </Avatar>
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>
-                Top 10 por Margem
+                {orderBy === 'margem' ? 'Top 10 por Margem' : 'Top 10 por Custo'}
               </Typography>
               <Typography variant="body2" sx={{ color: GRAY_MAIN }}>
-                {data.length} produtos/serviços analisados
+                {totalItems} produtos/serviços analisados
               </Typography>
             </Box>
           </Stack>
@@ -138,7 +161,9 @@ export default function AnaliseMargemChart({ data, loading }: AnaliseMargemChart
               size="small"
               value={orderBy}
               exclusive
-              onChange={(_, value) => value && setOrderBy(value)}
+              onChange={(_, value) => {
+                if (value) setOrderBy(value);
+              }}
               sx={{
                 '& .MuiToggleButton-root': {
                   borderColor: BORDER_LIGHT,
@@ -153,11 +178,16 @@ export default function AnaliseMargemChart({ data, loading }: AnaliseMargemChart
             >
               <ToggleButton value="margem">
                 <TrendingUpIcon fontSize="small" />
-                <Typography variant="caption" sx={{ ml: 0.5 }}>Margem</Typography>
+                <Typography variant="caption" sx={{ ml: 0.5 }}>
+                  Margem
+                </Typography>
               </ToggleButton>
+
               <ToggleButton value="custo">
                 <ShowChartIcon fontSize="small" />
-                <Typography variant="caption" sx={{ ml: 0.5 }}>Custo</Typography>
+                <Typography variant="caption" sx={{ ml: 0.5 }}>
+                  Custo
+                </Typography>
               </ToggleButton>
             </ToggleButtonGroup>
           </Stack>
@@ -165,22 +195,25 @@ export default function AnaliseMargemChart({ data, loading }: AnaliseMargemChart
 
         <Box sx={{ width: '100%', height: 400 }}>
           <ResponsiveContainer>
-            <BarChart data={chartData} layout="vertical" margin={{ left: 100 }}>
+            <BarChart data={chartData} layout="vertical" margin={{ top: 10, right: 10, left: 90, bottom: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={alpha(GRAY_MAIN, 0.1)} horizontal={false} />
-              <XAxis 
-                type="number" 
-                tickFormatter={(v) => moneyBR(v).replace('R$', '')} 
-                stroke={GRAY_MAIN} 
+              <XAxis
+                type="number"
+                tickFormatter={(v) => moneyBR(Number(v)).replace('R$', '').trim()}
+                stroke={GRAY_MAIN}
               />
-              <YAxis 
-                dataKey="name" 
-                type="category" 
-                width={100} 
-                stroke={GRAY_MAIN} 
+              <YAxis
+                dataKey="name"
+                type="category"
+                width={110}
+                stroke={GRAY_MAIN}
               />
               <Tooltip
                 formatter={(value: number) => moneyBR(value)}
-                labelFormatter={(label) => `Produto: ${label}`}
+                labelFormatter={(_, payload) => {
+                  const item = payload && payload[0] && payload[0].payload;
+                  return `Produto: ${item?.nomeCompleto || '-'}`;
+                }}
                 contentStyle={{
                   backgroundColor: DARK_BG,
                   border: `1px solid ${BORDER_LIGHT}`,
@@ -188,14 +221,14 @@ export default function AnaliseMargemChart({ data, loading }: AnaliseMargemChart
                   color: WHITE,
                 }}
               />
-              <Bar 
-                dataKey={orderBy === 'margem' ? 'margem' : 'custo'} 
+              <Bar
+                dataKey={orderBy === 'margem' ? 'margem' : 'custo'}
                 radius={[0, 4, 4, 0]}
               >
                 {chartData.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={getBarColor(orderBy === 'margem' ? entry.margem : entry.custo)} 
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={getBarColor(orderBy === 'margem' ? entry.margem : entry.custo)}
                   />
                 ))}
               </Bar>
@@ -203,8 +236,7 @@ export default function AnaliseMargemChart({ data, loading }: AnaliseMargemChart
           </ResponsiveContainer>
         </Box>
 
-        {/* Legenda de cores */}
-        <Stack direction="row" spacing={2} justifyContent="center" sx={{ mt: 2 }}>
+        <Stack direction="row" spacing={2} justifyContent="center" sx={{ mt: 2, flexWrap: 'wrap' }}>
           <Chip
             label="> R$ 10k"
             size="small"

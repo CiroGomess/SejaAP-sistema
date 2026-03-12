@@ -32,7 +32,6 @@ import {
   Tooltip,
   alpha,
   Fade,
-  
   Container,
 } from '@mui/material';
 
@@ -117,6 +116,54 @@ type AnaliseMargemForm = {
   frete: number;
   imposto: number;
   comissao: number;
+};
+
+type DashboardResumo = {
+  margem_total: number;
+  custo_total: number;
+  media_por_item: number;
+  itens_analisados: number;
+  melhor_margem: {
+    produto_ou_servico: string;
+    margem_bruta: number;
+    custo: number;
+    id: number;
+  } | null;
+  pior_margem: {
+    produto_ou_servico: string;
+    margem_bruta: number;
+    custo: number;
+    id: number;
+  } | null;
+};
+
+type DashboardTopItem = {
+  id: number;
+  produto_ou_servico: string;
+  margem_bruta: number;
+  custo: number;
+};
+
+type DashboardCategoria = {
+  categoria: string;
+  total_itens: number;
+  margem_total: number;
+  custo_total: number;
+  percentual_margem: number;
+};
+
+type DashboardFiltros = {
+  user_id: number | null;
+  ano: number | null;
+  anos_disponiveis: number[];
+};
+
+type DashboardAnaliseMargem = {
+  filtros: DashboardFiltros;
+  resumo: DashboardResumo;
+  top10_margem: DashboardTopItem[];
+  top10_custo: DashboardTopItem[];
+  distribuicao_categoria: DashboardCategoria[];
 };
 
 function pickApiError(data: any): string {
@@ -210,12 +257,18 @@ function getSelectedClientFromStorage(): SelectedClient | null {
 export default function AnaliseListarPage() {
   const [search, setSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<SelectedClient | null>(null);
+
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState<10 | 50 | 100>(10);
   const [pagination, setPagination] = useState<Pagination | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<AnaliseMargem[]>([]);
   const [lastUpdated, setLastUpdated] = useState<string>('');
+
+  const [dashboard, setDashboard] = useState<DashboardAnaliseMargem | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [anoSelecionado, setAnoSelecionado] = useState<number | ''>('');
 
   /* ALERT */
   const [alertOpen, setAlertOpen] = useState(false);
@@ -242,7 +295,6 @@ export default function AnaliseListarPage() {
     comissao: 0,
   });
 
-  // Preview da margem
   const margemPreview = useMemo(() => {
     const base = toNumberSafe(form.custo) + toNumberSafe(form.hora_homem) + toNumberSafe(form.frete);
     const impostos = base * (toNumberSafe(form.imposto) / 100);
@@ -275,41 +327,96 @@ export default function AnaliseListarPage() {
     setLoading(true);
     setLastUpdated(new Date().toLocaleString());
 
-    const qs = new URLSearchParams({
-      user_id: String(userId),
-      page: String(page),
-      per_page: String(perPage),
-    }).toString();
+    try {
+      const qs = new URLSearchParams({
+        user_id: String(userId),
+        page: String(page),
+        per_page: String(perPage),
+      }).toString();
 
-    const res = await services(`/analise-margem?${qs}`, { method: 'GET' });
+      const res = await services(`/analise-margem?${qs}`, { method: 'GET' });
 
-    if (!res.success) {
-      showAlert(pickApiError(res.data), 'error');
+      if (!res.success) {
+        showAlert(pickApiError(res.data), 'error');
+        setRows([]);
+        setPagination(null);
+        setLoading(false);
+        return;
+      }
+
+      const list = Array.isArray(res.data?.analises_margem) ? res.data.analises_margem : [];
+      const pg = res.data?.pagination ?? null;
+
+      setRows(list);
+      setPagination(pg);
+    } catch (e: any) {
+      showAlert(e?.message || 'Erro ao carregar análises.', 'error');
       setRows([]);
       setPagination(null);
+    } finally {
       setLoading(false);
+    }
+  }, [page, perPage]);
+
+  const loadDashboard = useCallback(async () => {
+    const client = getSelectedClientFromStorage();
+    setSelectedClient(client);
+
+    if (!client?.id) {
+      setDashboard(null);
       return;
     }
 
-    const list = Array.isArray(res.data?.analises_margem) ? res.data.analises_margem : [];
-    const pg = res.data?.pagination ?? null;
+    setDashboardLoading(true);
 
-    setRows(list);
-    setPagination(pg);
-    setLoading(false);
-  }, [page, perPage]);
+    try {
+      const qs = new URLSearchParams({
+        user_id: String(client.id),
+        ...(anoSelecionado !== '' ? { ano: String(anoSelecionado) } : {}),
+      }).toString();
+
+      const res = await services(`/analise-margem/dashboard?${qs}`, {
+        method: 'GET',
+      });
+
+      if (!res.success) {
+        showAlert(pickApiError(res.data), 'error');
+        setDashboard(null);
+        return;
+      }
+
+      const data = res.data as DashboardAnaliseMargem;
+      setDashboard(data);
+
+      if (anoSelecionado === '' && data?.filtros?.ano) {
+        setAnoSelecionado(data.filtros.ano);
+      }
+    } catch (e: any) {
+      showAlert(e?.message || 'Erro ao carregar dashboard.', 'error');
+      setDashboard(null);
+    } finally {
+      setDashboardLoading(false);
+    }
+  }, [anoSelecionado]);
 
   useEffect(() => {
     loadAnalises();
   }, [loadAnalises]);
 
-  // Atualiza automaticamente se trocar cliente no sidebar
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY) {
         setPage(1);
         setSearch('');
-        setTimeout(() => loadAnalises(), 0);
+        setAnoSelecionado('');
+        setTimeout(() => {
+          loadAnalises();
+          loadDashboard();
+        }, 0);
       }
     };
 
@@ -322,7 +429,11 @@ export default function AnaliseListarPage() {
         setSelectedClient(current);
         setPage(1);
         setSearch('');
-        setTimeout(() => loadAnalises(), 0);
+        setAnoSelecionado('');
+        setTimeout(() => {
+          loadAnalises();
+          loadDashboard();
+        }, 0);
       }
     };
 
@@ -333,7 +444,7 @@ export default function AnaliseListarPage() {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('focus', onFocus);
     };
-  }, [selectedClient?.id, loadAnalises]);
+  }, [selectedClient?.id, loadAnalises, loadDashboard]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -359,94 +470,58 @@ export default function AnaliseListarPage() {
     });
   }, [rows, search]);
 
-  // Dados para os gráficos
-  const dadosGraficos = useMemo(() => {
-    if (filtered.length === 0) return null;
-
-    // Agrupar por categoria (usando as primeiras letras como categoria exemplo)
-    const categorias: Record<string, {
-      custo: number;
-      hora_homem: number;
-      frete: number;
-      imposto: number;
-      comissao: number;
-      margem_bruta: number;
-      count: number;
-    }> = {};
-
-    let totalCusto = 0;
-    let totalMargem = 0;
-    let melhorMargem = { produto: '', valor: -Infinity };
-    let piorMargem = { produto: '', valor: Infinity };
-
-    filtered.forEach(item => {
-      const produto = item.produto_ou_servico || 'Sem nome';
-      const custo = toNumberSafe(item.custo);
-      const margem = toNumberSafe(item.margem_bruta);
-
-      totalCusto += custo;
-      totalMargem += margem;
-
-      if (margem > melhorMargem.valor) {
-        melhorMargem = { produto, valor: margem };
-      }
-      if (margem < piorMargem.valor) {
-        piorMargem = { produto, valor: margem };
-      }
-
-      // Agrupar por categoria (simulado - idealmente viria do backend)
-      const categoria = produto.length > 0
-        ? produto.substring(0, 3).toUpperCase() + '...'
-        : 'OUTROS';
-
-      if (!categorias[categoria]) {
-        categorias[categoria] = {
-          custo: 0,
-          hora_homem: 0,
-          frete: 0,
-          imposto: 0,
-          comissao: 0,
-          margem_bruta: 0,
-          count: 0,
-        };
-      }
-
-      categorias[categoria].custo += custo;
-      categorias[categoria].hora_homem += toNumberSafe(item.hora_homem);
-      categorias[categoria].frete += toNumberSafe(item.frete);
-      categorias[categoria].imposto += toNumberSafe(item.imposto);
-      categorias[categoria].comissao += toNumberSafe(item.comissao);
-      categorias[categoria].margem_bruta += margem;
-      categorias[categoria].count += 1;
-    });
-
-    const mediaMargem = filtered.length > 0 ? totalMargem / filtered.length : 0;
+  const resumoCardsData = useMemo(() => {
+    if (!dashboard?.resumo) return null;
 
     return {
-      categorias: Object.entries(categorias).map(([cat, vals]) => ({
-        categoria: cat,
-        ...vals,
-      })),
-      stats: {
-        totalCusto,
-        totalMargem,
-        mediaMargem,
-        qtdItens: filtered.length,
-        melhorMargem,
-        piorMargem,
+      totalCusto: dashboard.resumo.custo_total || 0,
+      totalMargem: dashboard.resumo.margem_total || 0,
+      mediaMargem: dashboard.resumo.media_por_item || 0,
+      qtdItens: dashboard.resumo.itens_analisados || 0,
+      melhorMargem: {
+        produto: dashboard.resumo.melhor_margem?.produto_ou_servico || '-',
+        valor: dashboard.resumo.melhor_margem?.margem_bruta || 0,
       },
-      itens: filtered.map(item => ({
-        id: item.id,
-        produto_ou_servico: item.produto_ou_servico || 'Sem nome',
-        custo: toNumberSafe(item.custo),
-        hora_homem: toNumberSafe(item.hora_homem),
-        frete: toNumberSafe(item.frete),
-        imposto: toNumberSafe(item.imposto),
-        comissao: toNumberSafe(item.comissao),
-        margem_bruta: toNumberSafe(item.margem_bruta),
-      })),
+      piorMargem: {
+        produto: dashboard.resumo.pior_margem?.produto_ou_servico || '-',
+        valor: dashboard.resumo.pior_margem?.margem_bruta || 0,
+      },
     };
-  }, [filtered]);
+  }, [dashboard]);
+
+  const margemChartMargemData = useMemo(() => {
+    if (!dashboard) return [];
+
+    return (dashboard.top10_margem || []).map((item) => ({
+      id: item.id,
+      produto_ou_servico: item.produto_ou_servico || 'Sem nome',
+      margem_bruta: toNumberSafe(item.margem_bruta),
+      custo: toNumberSafe(item.custo),
+    }));
+  }, [dashboard]);
+
+  const margemChartCustoData = useMemo(() => {
+    if (!dashboard) return [];
+
+    return (dashboard.top10_custo || []).map((item) => ({
+      id: item.id,
+      produto_ou_servico: item.produto_ou_servico || 'Sem nome',
+      margem_bruta: toNumberSafe(item.margem_bruta),
+      custo: toNumberSafe(item.custo),
+    }));
+  }, [dashboard]);
+
+  const categoriaChartData = useMemo(() => {
+    if (!dashboard) return [];
+
+    return (dashboard.distribuicao_categoria || []).map((item) => ({
+      categoria: item.categoria || 'Sem categoria',
+      custo: toNumberSafe(item.custo_total),
+      margem_bruta: toNumberSafe(item.margem_total),
+      count: toNumberSafe(item.total_itens),
+      percentual_margem: toNumberSafe(item.percentual_margem),
+    }));
+  }, [dashboard]);
 
   const openEdit = (r: AnaliseMargem) => {
     setEditing(r);
@@ -482,27 +557,31 @@ export default function AnaliseListarPage() {
 
     setSaving(true);
 
-    const payload: any = {
-      produto_ou_servico: String(form.produto_ou_servico).trim(),
-      custo: toNumberSafe(form.custo),
-      hora_homem: toNumberSafe(form.hora_homem),
-      frete: toNumberSafe(form.frete),
-      imposto: toNumberSafe(form.imposto),
-      comissao: toNumberSafe(form.comissao),
-    };
+    try {
+      const payload: any = {
+        produto_ou_servico: String(form.produto_ou_servico).trim(),
+        custo: toNumberSafe(form.custo),
+        hora_homem: toNumberSafe(form.hora_homem),
+        frete: toNumberSafe(form.frete),
+        imposto: toNumberSafe(form.imposto),
+        comissao: toNumberSafe(form.comissao),
+      };
 
-    const res = await services(`/analise-margem/${editing.id}`, { method: 'PUT', data: payload });
-    setSaving(false);
+      const res = await services(`/analise-margem/${editing.id}`, { method: 'PUT', data: payload });
 
-    if (!res.success) {
-      showAlert(pickApiError(res.data), 'error');
-      return;
+      if (!res.success) {
+        showAlert(pickApiError(res.data), 'error');
+        return;
+      }
+
+      showAlert('Análise atualizada com sucesso.', 'success');
+      setEditOpen(false);
+      setEditing(null);
+      await loadAnalises();
+      await loadDashboard();
+    } finally {
+      setSaving(false);
     }
-
-    showAlert('Análise atualizada com sucesso.', 'success');
-    setEditOpen(false);
-    setEditing(null);
-    await loadAnalises();
   };
 
   const handleDelete = async (r: AnaliseMargem) => {
@@ -510,7 +589,6 @@ export default function AnaliseListarPage() {
       title: '',
       html: `
     <div style="font-family: 'Inter', system-ui, -apple-system, sans-serif; padding: 8px 0;">
-      <!-- Ícone de aviso customizado -->
       <div style="
         width: 72px;
         height: 72px;
@@ -523,16 +601,15 @@ export default function AnaliseListarPage() {
         border: 2px solid ${alpha(STATUS_COLORS.error, 0.2)};
       ">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 9V14M12 17V17.5M12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3Z" 
-            stroke="${STATUS_COLORS.error}" 
-            stroke-width="1.8" 
+          <path d="M12 9V14M12 17V17.5M12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3Z"
+            stroke="${STATUS_COLORS.error}"
+            stroke-width="1.8"
             stroke-linecap="round"
           />
           <circle cx="12" cy="17" r="0.5" fill="${STATUS_COLORS.error}" stroke="${STATUS_COLORS.error}" stroke-width="0.5"/>
         </svg>
       </div>
 
-      <!-- Título -->
       <h2 style="
         margin: 0 0 8px 0;
         color: ${TEXT_DARK};
@@ -543,7 +620,7 @@ export default function AnaliseListarPage() {
       ">
         Excluir análise?
       </h2>
-      
+
       <p style="
         margin: 0 0 24px 0;
         color: ${GRAY_MAIN};
@@ -553,7 +630,6 @@ export default function AnaliseListarPage() {
         Esta ação é irreversível e removerá permanentemente este registro.
       </p>
 
-      <!-- Card do item a ser excluído -->
       <div style="
         background: ${alpha(GOLD_PRIMARY, 0.03)};
         border: 1px solid ${alpha(GOLD_PRIMARY, 0.15)};
@@ -562,7 +638,6 @@ export default function AnaliseListarPage() {
         margin-bottom: 20px;
       ">
         <div style="display: flex; align-items: center; gap: 16px;">
-          <!-- Avatar do produto -->
           <div style="
             width: 48px;
             height: 48px;
@@ -580,7 +655,6 @@ export default function AnaliseListarPage() {
             ${(r.produto_ou_servico?.charAt(0) || '?').toUpperCase()}
           </div>
 
-          <!-- Informações -->
           <div style="flex: 1; min-width: 0; text-align: left;">
             <div style="
               color: ${TEXT_DARK};
@@ -596,7 +670,6 @@ export default function AnaliseListarPage() {
           </div>
         </div>
 
-        <!-- Valor da margem em destaque -->
         <div style="
           margin-top: 16px;
           padding-top: 16px;
@@ -619,7 +692,6 @@ export default function AnaliseListarPage() {
         </div>
       </div>
 
-      <!-- Aviso de irreversibilidade -->
       <div style="
         background: ${alpha(STATUS_COLORS.error, 0.05)};
         border: 1px solid ${alpha(STATUS_COLORS.error, 0.15)};
@@ -641,7 +713,7 @@ export default function AnaliseListarPage() {
           line-height: 1.4;
           text-align: left;
         ">
-          Esta ação <strong style="color: ${STATUS_COLORS.error};">não poderá ser desfeita</strong>. 
+          Esta ação <strong style="color: ${STATUS_COLORS.error};">não poderá ser desfeita</strong>.
           Todos os dados associados serão permanentemente removidos.
         </span>
       </div>
@@ -675,6 +747,7 @@ export default function AnaliseListarPage() {
 
     showAlert('Análise removida com sucesso.', 'warning');
     await loadAnalises();
+    await loadDashboard();
   };
 
   const pageLabel = useMemo(() => {
@@ -686,17 +759,18 @@ export default function AnaliseListarPage() {
   const canPrev = (pagination?.page ?? page) > 1;
   const canNext = pagination ? pagination.page < pagination.total_pages : false;
 
-  // UI quando NÃO tem cliente selecionado
   if (!selectedClient) {
     return (
-      <Box sx={{
-        minHeight: '100vh',
-        bgcolor: GRAY_EXTRA_LIGHT,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        p: 3,
-      }}>
+      <Box
+        sx={{
+          minHeight: '100vh',
+          bgcolor: GRAY_EXTRA_LIGHT,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          p: 3,
+        }}
+      >
         <Fade in timeout={500}>
           <Paper
             elevation={0}
@@ -738,7 +812,7 @@ export default function AnaliseListarPage() {
                 <Button
                   variant="contained"
                   startIcon={<PersonIcon />}
-                  onClick={() => window.location.href = '/clients'}
+                  onClick={() => (window.location.href = '/clients')}
                   sx={{
                     textTransform: 'none',
                     fontWeight: 600,
@@ -786,7 +860,6 @@ export default function AnaliseListarPage() {
   return (
     <Box sx={{ bgcolor: GRAY_EXTRA_LIGHT, minHeight: '100vh', py: 4 }}>
       <Container maxWidth={false} sx={{ maxWidth: '95%', mx: 'auto' }}>
-        {/* Header */}
         <Fade in timeout={500}>
           <Box sx={{ mb: 4 }}>
             <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1 }}>
@@ -801,10 +874,12 @@ export default function AnaliseListarPage() {
               >
                 <ArrowBackIcon />
               </IconButton>
+
               <Box>
                 <Typography variant="h4" sx={{ fontWeight: 700, color: TEXT_DARK }}>
                   Análises de Margem
                 </Typography>
+
                 <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 1 }}>
                   <Avatar
                     sx={{
@@ -816,6 +891,7 @@ export default function AnaliseListarPage() {
                   >
                     <PersonIcon sx={{ fontSize: 16 }} />
                   </Avatar>
+
                   <Typography variant="body1" sx={{ color: GRAY_MAIN }}>
                     <strong>{selectedClient.name}</strong> • Código: {selectedClient.code}
                   </Typography>
@@ -825,23 +901,61 @@ export default function AnaliseListarPage() {
           </Box>
         </Fade>
 
-        {/* Cards de Resumo com Gráficos - Só aparece quando há dados */}
-        {dadosGraficos && (
+        {dashboard && resumoCardsData && (
           <Box sx={{ mb: 4 }}>
-            <AnaliseResumoCards stats={dadosGraficos.stats} />
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={2}
+              justifyContent="space-between"
+              alignItems={{ xs: 'stretch', md: 'center' }}
+              sx={{ mb: 2 }}
+            >
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>
+                  Resumo Analítico
+                </Typography>
+                <Typography variant="body2" sx={{ color: GRAY_MAIN }}>
+                  Dados consolidados do ano selecionado
+                </Typography>
+              </Box>
+
+              <TextField
+                select
+                size="small"
+                label="Ano"
+                value={anoSelecionado}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setAnoSelecionado(value === '' ? '' : Number(value));
+                }}
+                sx={{ width: 160, ...inputSx }}
+              >
+                {(dashboard.filtros?.anos_disponiveis || []).map((ano) => (
+                  <MenuItem key={ano} value={ano}>
+                    {ano}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+
+            <AnaliseResumoCards stats={resumoCardsData} />
 
             <Grid container spacing={3} sx={{ mt: 2 }}>
               <Grid size={{ xs: 12, lg: 6 }}>
-                <AnaliseMargemChart data={dadosGraficos.itens} />
+                <AnaliseMargemChart
+                  dataMargem={margemChartMargemData}
+                  dataCusto={margemChartCustoData}
+                  loading={dashboardLoading}
+                />
               </Grid>
+
               <Grid size={{ xs: 12, lg: 6 }}>
-                <AnaliseCategoriaChart data={dadosGraficos.categorias} />
+                <AnaliseCategoriaChart data={categoriaChartData} loading={dashboardLoading} />
               </Grid>
             </Grid>
           </Box>
         )}
 
-        {/* Card Principal */}
         <Fade in timeout={600}>
           <Card
             elevation={0}
@@ -855,7 +969,6 @@ export default function AnaliseListarPage() {
           >
             <Box sx={{ height: 6, background: `linear-gradient(90deg, ${GOLD_PRIMARY}, ${GOLD_LIGHT})` }} />
 
-            {/* Toolbar */}
             <Toolbar
               sx={{
                 display: 'flex',
@@ -871,6 +984,7 @@ export default function AnaliseListarPage() {
                 <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK, mb: 0.5 }}>
                   Lista de Análises
                 </Typography>
+
                 <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 0.5 }}>
                   <Chip
                     icon={<AssessmentIcon />}
@@ -878,11 +992,23 @@ export default function AnaliseListarPage() {
                     size="small"
                     sx={{ bgcolor: alpha(GOLD_PRIMARY, 0.1), color: GOLD_PRIMARY, fontWeight: 600 }}
                   />
+
+                  {!!lastUpdated && (
+                    <Chip
+                      label={`Atualizado em ${lastUpdated}`}
+                      size="small"
+                      sx={{
+                        bgcolor: alpha(GRAY_MAIN, 0.05),
+                        color: GRAY_MAIN,
+                        fontWeight: 500,
+                        border: `1px solid ${BORDER_LIGHT}`,
+                      }}
+                    />
+                  )}
                 </Stack>
               </Box>
 
               <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-                {/* Busca */}
                 <TextField
                   size="small"
                   placeholder="Buscar análises..."
@@ -897,7 +1023,6 @@ export default function AnaliseListarPage() {
                   }}
                 />
 
-                {/* Select por página */}
                 <TextField
                   size="small"
                   select
@@ -915,7 +1040,6 @@ export default function AnaliseListarPage() {
                   <MenuItem value={100}>100</MenuItem>
                 </TextField>
 
-                {/* Paginação */}
                 <Chip
                   label={pageLabel}
                   sx={{
@@ -954,8 +1078,11 @@ export default function AnaliseListarPage() {
 
                 <Tooltip title="Atualizar">
                   <IconButton
-                    onClick={() => loadAnalises()}
-                    disabled={loading}
+                    onClick={async () => {
+                      await loadAnalises();
+                      await loadDashboard();
+                    }}
+                    disabled={loading || dashboardLoading}
                     sx={{
                       border: `1px solid ${BORDER_LIGHT}`,
                       borderRadius: 2,
@@ -971,7 +1098,6 @@ export default function AnaliseListarPage() {
 
             <Divider sx={{ borderColor: BORDER_LIGHT }} />
 
-            {/* Tabela */}
             <TableContainer sx={{ bgcolor: WHITE }}>
               <Table stickyHeader>
                 <TableHead>
@@ -1028,9 +1154,14 @@ export default function AnaliseListarPage() {
                   ) : (
                     filtered.map((r) => {
                       const margem = toNumberSafe(r.margem_bruta);
-                      const margemColor = margem > 10000 ? STATUS_COLORS.success :
-                        margem > 5000 ? GOLD_PRIMARY :
-                          margem > 1000 ? STATUS_COLORS.warning : STATUS_COLORS.error;
+                      const margemColor =
+                        margem > 10000
+                          ? STATUS_COLORS.success
+                          : margem > 5000
+                            ? GOLD_PRIMARY
+                            : margem > 1000
+                              ? STATUS_COLORS.warning
+                              : STATUS_COLORS.error;
 
                       return (
                         <TableRow
@@ -1137,11 +1268,9 @@ export default function AnaliseListarPage() {
                 </TableBody>
               </Table>
             </TableContainer>
-
           </Card>
         </Fade>
 
-        {/* Modal de Edição Premium */}
         <Dialog
           open={editOpen}
           onClose={() => setEditOpen(false)}
@@ -1311,6 +1440,7 @@ export default function AnaliseListarPage() {
                         </Typography>
                       </Box>
                     </Stack>
+
                     <Typography variant="h3" sx={{ fontWeight: 700, color: GOLD_PRIMARY }}>
                       {moneyBRFromString(margemPreview.toString())}
                     </Typography>

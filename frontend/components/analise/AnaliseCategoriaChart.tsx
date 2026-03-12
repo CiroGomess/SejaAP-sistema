@@ -23,8 +23,6 @@ import {
 } from 'recharts';
 import {
   Category as CategoryIcon,
-  TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
 } from '@mui/icons-material';
 
 // --- PALETA DE CORES ---
@@ -59,12 +57,9 @@ interface AnaliseCategoriaChartProps {
   data: Array<{
     categoria: string;
     custo: number;
-    hora_homem: number;
-    frete: number;
-    imposto: number;
-    comissao: number;
     margem_bruta: number;
     count: number;
+    percentual_margem?: number;
   }>;
   loading?: boolean;
 }
@@ -85,6 +80,7 @@ export default function AnaliseCategoriaChart({ data, loading }: AnaliseCategori
       value: item.margem_bruta,
       count: item.count,
       custo: item.custo,
+      percentual_margem: item.percentual_margem ?? 0,
       color: PIE_COLORS[index % PIE_COLORS.length],
     }));
   }, [data]);
@@ -97,9 +93,21 @@ export default function AnaliseCategoriaChart({ data, loading }: AnaliseCategori
     return data.reduce((acc, item) => acc + item.custo, 0);
   }, [data]);
 
+  const totalItens = useMemo(() => {
+    return data.reduce((acc, item) => acc + item.count, 0);
+  }, [data]);
+
   if (loading || data.length === 0) {
     return (
-      <Card elevation={0} sx={{ borderRadius: 4, border: `1px solid ${BORDER_LIGHT}`, bgcolor: WHITE, p: 3 }}>
+      <Card
+        elevation={0}
+        sx={{
+          borderRadius: 4,
+          border: `1px solid ${BORDER_LIGHT}`,
+          bgcolor: WHITE,
+          p: 3,
+        }}
+      >
         <Typography sx={{ color: GRAY_MAIN, textAlign: 'center' }}>
           {loading ? 'Carregando dados...' : 'Nenhum dado disponível'}
         </Typography>
@@ -108,12 +116,27 @@ export default function AnaliseCategoriaChart({ data, loading }: AnaliseCategori
   }
 
   return (
-    <Card elevation={0} sx={{ borderRadius: 4, border: `1px solid ${BORDER_LIGHT}`, bgcolor: WHITE, overflow: 'hidden' }}>
+    <Card
+      elevation={0}
+      sx={{
+        borderRadius: 4,
+        border: `1px solid ${BORDER_LIGHT}`,
+        bgcolor: WHITE,
+        overflow: 'hidden',
+      }}
+    >
       <Box sx={{ height: 6, background: `linear-gradient(90deg, ${GOLD_PRIMARY}, ${GOLD_LIGHT})` }} />
-      
+
       <CardContent sx={{ p: 3 }}>
         <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
-          <Avatar sx={{ bgcolor: alpha(GOLD_PRIMARY, 0.1), color: GOLD_PRIMARY, width: 40, height: 40 }}>
+          <Avatar
+            sx={{
+              bgcolor: alpha(GOLD_PRIMARY, 0.1),
+              color: GOLD_PRIMARY,
+              width: 40,
+              height: 40,
+            }}
+          >
             <CategoryIcon />
           </Avatar>
           <Box>
@@ -127,7 +150,6 @@ export default function AnaliseCategoriaChart({ data, loading }: AnaliseCategori
         </Stack>
 
         <Grid container spacing={3}>
-          {/* Gráfico de Pizza */}
           <Grid size={{ xs: 12, md: 6 }}>
             <Box sx={{ width: '100%', height: 300 }}>
               <ResponsiveContainer>
@@ -162,13 +184,18 @@ export default function AnaliseCategoriaChart({ data, loading }: AnaliseCategori
             </Box>
           </Grid>
 
-          {/* Lista de Categorias */}
           <Grid size={{ xs: 12, md: 6 }}>
             <Stack spacing={1.5}>
               {data.map((item, index) => {
-                const percent = (item.margem_bruta / totalMargem) * 100;
+                const percent =
+                  item.percentual_margem !== undefined
+                    ? item.percentual_margem
+                    : totalMargem > 0
+                      ? (item.margem_bruta / totalMargem) * 100
+                      : 0;
+
                 const cor = item.margem_bruta > 0 ? STATUS_COLORS.success : STATUS_COLORS.error;
-                
+
                 return (
                   <Paper
                     key={index}
@@ -189,6 +216,7 @@ export default function AnaliseCategoriaChart({ data, loading }: AnaliseCategori
                           {item.count} {item.count === 1 ? 'item' : 'itens'} • Custo: {moneyBR(item.custo)}
                         </Typography>
                       </Box>
+
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Typography variant="body2" sx={{ fontWeight: 700, color: cor }}>
                           {moneyBR(item.margem_bruta)}
@@ -212,24 +240,61 @@ export default function AnaliseCategoriaChart({ data, loading }: AnaliseCategori
           </Grid>
         </Grid>
 
-        {/* Cards de Resumo */}
         <Grid container spacing={2} sx={{ mt: 2 }}>
           <Grid size={{ xs: 12, sm: 4 }}>
-            <Paper elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: alpha(GOLD_PRIMARY, 0.03), border: `1px solid ${alpha(GOLD_PRIMARY, 0.15)}` }}>
-              <Typography variant="caption" sx={{ color: GRAY_MAIN }}>Margem Total</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>{moneyBR(totalMargem)}</Typography>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                bgcolor: alpha(GOLD_PRIMARY, 0.03),
+                border: `1px solid ${alpha(GOLD_PRIMARY, 0.15)}`,
+              }}
+            >
+              <Typography variant="caption" sx={{ color: GRAY_MAIN }}>
+                Margem Total
+              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>
+                {moneyBR(totalMargem)}
+              </Typography>
             </Paper>
           </Grid>
+
           <Grid size={{ xs: 12, sm: 4 }}>
-            <Paper elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: alpha(GRAY_MAIN, 0.03), border: `1px solid ${BORDER_LIGHT}` }}>
-              <Typography variant="caption" sx={{ color: GRAY_MAIN }}>Custo Total</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>{moneyBR(totalCusto)}</Typography>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                bgcolor: alpha(GRAY_MAIN, 0.03),
+                border: `1px solid ${BORDER_LIGHT}`,
+              }}
+            >
+              <Typography variant="caption" sx={{ color: GRAY_MAIN }}>
+                Custo Total
+              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>
+                {moneyBR(totalCusto)}
+              </Typography>
             </Paper>
           </Grid>
+
           <Grid size={{ xs: 12, sm: 4 }}>
-            <Paper elevation={0} sx={{ p: 2, borderRadius: 2, bgcolor: alpha(STATUS_COLORS.info, 0.03), border: `1px solid ${alpha(STATUS_COLORS.info, 0.15)}` }}>
-              <Typography variant="caption" sx={{ color: GRAY_MAIN }}>Total Itens</Typography>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>{data.reduce((acc, i) => acc + i.count, 0)}</Typography>
+            <Paper
+              elevation={0}
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                bgcolor: alpha(STATUS_COLORS.info, 0.03),
+                border: `1px solid ${alpha(STATUS_COLORS.info, 0.15)}`,
+              }}
+            >
+              <Typography variant="caption" sx={{ color: GRAY_MAIN }}>
+                Total Itens
+              </Typography>
+              <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK }}>
+                {totalItens}
+              </Typography>
             </Paper>
           </Grid>
         </Grid>

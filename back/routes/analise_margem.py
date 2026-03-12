@@ -9,6 +9,7 @@ from controllers.analiseMargemController import (
     get_analise_margem,
     update_analise_margem,
     delete_analise_margem,
+    dashboard_analise_margem,
 )
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me")
@@ -69,3 +70,16 @@ def route_update(current_user, margem_id):
 @token_required
 def route_delete(current_user, margem_id):
     return delete_analise_margem(current_user, margem_id)
+
+
+@analise_margem_routes.get("/analise-margem/dashboard")
+@token_required
+def route_dashboard(current_user):
+    user_id = request.args.get("user_id", type=int)
+    ano = request.args.get("ano", type=int)
+
+    return dashboard_analise_margem(
+        current_user=current_user,
+        user_id=user_id,
+        ano=ano,
+    )
