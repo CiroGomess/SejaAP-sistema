@@ -79,7 +79,7 @@ const STORAGE_KEY = 'selectedClient';
 const ENDPOINT = '/curva-abc-produtos';
 
 type SelectedClient = {
-  id: number;
+  id: string;
   code: string;
   name: string;
 };
@@ -109,7 +109,7 @@ type Pagination = {
 };
 
 type Summary = {
-  user_id: number;
+  user_id: string;
   total_valor: string;
   a_limit: string;
   b_limit: string;
@@ -133,17 +133,20 @@ function getSelectedClientFromStorage(): SelectedClient | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
+
     const parsed = JSON.parse(raw);
+
     if (parsed?.id && parsed?.code && parsed?.name) {
       return {
-        id: Number(parsed.id),
-        code: String(parsed.code),
-        name: String(parsed.name),
+        id: String(parsed.id).trim(),
+        code: String(parsed.code).trim(),
+        name: String(parsed.name).trim(),
       };
     }
   } catch {
     return null;
   }
+
   return null;
 }
 
@@ -310,8 +313,9 @@ export default function CurvaABCProdutosPage() {
       return;
     }
 
-    const userId = Number(client.id);
-    if (!Number.isFinite(userId) || userId <= 0) {
+    const userId = String(client.id).trim();
+
+    if (!userId) {
       setItems([]);
       setPagination(null);
       setSummary(null);
@@ -324,7 +328,7 @@ export default function CurvaABCProdutosPage() {
     setLastUpdated(new Date().toLocaleString());
 
     const params = new URLSearchParams({
-      user_id: String(userId),
+      user_id: userId,
       page: String(page),
       per_page: String(perPage),
     });
@@ -384,8 +388,8 @@ export default function CurvaABCProdutosPage() {
       return;
     }
 
-    const userId = Number(client.id);
-    if (!Number.isFinite(userId) || userId <= 0) {
+    const userId = String(client.id).trim();
+    if (!userId) {
       setYearSummary(null);
       setAvailableYears([]);
       return;

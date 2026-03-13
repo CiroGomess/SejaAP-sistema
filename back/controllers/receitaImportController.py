@@ -7,20 +7,31 @@ from flask import request, jsonify
 from openpyxl import load_workbook
 
 from config.db import get_connection
+from utils.helpers import generate_secure_id
 
-# Reaproveita suas funções de salvar docs
-from controllers.uploadDocsController import (
-    _customer_id_exists,
-    _save_file_for_customer,
-)
+# Reaproveita sua função de salvar docs
+from controllers.uploadDocsController import _save_file_for_customer
 
 DOCS_IMPORT_CATEGORIA_DEFAULT = "RECEITAS_XLSX"
 
 
 # -------------------------
-# Helpers Cliente (nome)
+# Helpers Cliente
 # -------------------------
-def _get_customer_display_name(cur, id_cliente: int) -> str | None:
+def _customer_id_exists(cur, customer_id: str) -> bool:
+    cur.execute(
+        """
+        SELECT 1
+        FROM public.clientes
+        WHERE id = %s
+        LIMIT 1;
+        """,
+        (customer_id,),
+    )
+    return cur.fetchone() is not None
+
+
+def _get_customer_display_name(cur, id_cliente: str) -> str | None:
     """
     Retorna um nome amigável do cliente:
       1) first_name + last_name
@@ -83,7 +94,6 @@ def _to_int(v, default=0):
     if v is None or str(v).strip() == "":
         return default
     try:
-        # se vier como float "52.0"
         return int(float(str(v).replace(",", ".")))
     except Exception:
         return default
@@ -100,13 +110,11 @@ def _to_decimal(v, default=None):
     if v is None or str(v).strip() == "":
         return default
     try:
-        # Se já for número do openpyxl
         if isinstance(v, (int, float, Decimal)):
             return Decimal(str(v)).quantize(Decimal("0.01"))
 
         s = str(v).strip()
 
-        # caso 1: tem "," como decimal -> remove "." milhar e troca "," por "."
         if "," in s:
             s = s.replace(".", "").replace(",", ".")
         return Decimal(s).quantize(Decimal("0.01"))
@@ -116,11 +124,7 @@ def _to_decimal(v, default=None):
 
 def _to_date_iso(v) -> str | None:
     """
-    Retorna "YYYY-MM-DD" ou None.
-    Aceita:
-      - datetime/date vindo do openpyxl
-      - string "08/01/24" ou "08/01/2024"
-      - string "2024-01-08"
+    Retorna YYYY-MM-DD ou None.
     """
     if v is None or str(v).strip() == "":
         return None
@@ -132,11 +136,9 @@ def _to_date_iso(v) -> str | None:
 
     s = str(v).strip()
 
-    # ISO
     if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
         return s
 
-    # dd/mm/yy ou dd/mm/yyyy
     m = re.match(r"^(\d{2})/(\d{2})/(\d{2}|\d{4})$", s)
     if m:
         dd, mm, yy = m.group(1), m.group(2), m.group(3)
@@ -153,13 +155,10 @@ def _to_date_iso(v) -> str | None:
 def _read_xlsx_rows(file_bytes: bytes) -> list[dict]:
     """
     Lê a primeira sheet e retorna uma lista de dicts normalizados.
-    Espera headers como (exemplo da imagem):
-      N_orcamento, Nome_fantasia, Data_emissão, Vencimento, Cod_produto, Descricao, Qtd, Unitario, Total
     """
     wb = load_workbook(filename=BytesIO(file_bytes), data_only=True)
     ws = wb.active
 
-    # Headers (linha 1)
     headers = []
     for cell in ws[1]:
         headers.append(_norm_header(_to_str(cell.value)))
@@ -189,9 +188,9 @@ def _read_xlsx_rows(file_bytes: bytes) -> list[dict]:
             "qtd": _to_int(get(row_cells, "qtd"), default=0),
             "unitario": _to_decimal(get(row_cells, "unitario"), default=Decimal("0.00")),
             "total": _to_decimal(get(row_cells, "total"), default=None),
+            "unidade_filial": _to_str(get(row_cells, "unidade_filial")) or None,
         }
 
-        # Se total não vier, calcula
         if item["total"] is None:
             try:
                 item["total"] = (
@@ -214,7 +213,7 @@ def import_receitas_xlsx(current_user=None):
     multipart/form-data:
       - file (xlsx)
       - id_cliente (clientes.id) -> vira user_id em receita_user
-      - (opcional) categoria -> salva doc com essa categoria
+      - (opcional) categoria
       - (opcional) projeto, centro_de_resultado
     """
     file = request.files.get("file")
@@ -229,12 +228,9 @@ def import_receitas_xlsx(current_user=None):
     if not id_cliente:
         return jsonify({"error": "Missing id_cliente"}), 400
 
-    try:
-        user_id = int(id_cliente)
-        if user_id <= 0:
-            raise ValueError()
-    except Exception:
-        return jsonify({"error": "Invalid id_cliente", "details": "id_cliente must be a positive integer"}), 400
+    user_id = str(id_cliente).strip()
+    if not user_id:
+        return jsonify({"error": "Invalid id_cliente", "details": "id_cliente is required"}), 400
 
     file_bytes = file.read()
     if not file_bytes:
@@ -245,13 +241,11 @@ def import_receitas_xlsx(current_user=None):
         conn = get_connection()
         cur = conn.cursor()
 
-        # valida cliente
         if not _customer_id_exists(cur, user_id):
             return jsonify(
                 {"error": "Invalid id_cliente", "details": "id_cliente must exist in public.clientes.id"}
             ), 400
 
-        # pega nome do cliente UMA vez
         customer_name = _get_customer_display_name(cur, user_id)
         if not customer_name:
             return jsonify({"error": "Invalid id_cliente", "details": "Customer not found"}), 400
@@ -264,13 +258,15 @@ def import_receitas_xlsx(current_user=None):
         if err:
             return err
 
+        novo_doc_id = generate_secure_id()
+
         cur.execute(
             """
-            INSERT INTO public.docs_clientes (id_cliente, caminho_arquivo, categoria)
-            VALUES (%s, %s, %s)
+            INSERT INTO public.docs_clientes (id, id_cliente, caminho_arquivo, categoria)
+            VALUES (%s, %s, %s, %s)
             RETURNING id, id_cliente, caminho_arquivo, categoria, data_envio;
             """,
-            (user_id, caminho_arquivo, categoria),
+            (novo_doc_id, user_id, caminho_arquivo, categoria),
         )
         doc_row = cur.fetchone()
 
@@ -288,13 +284,10 @@ def import_receitas_xlsx(current_user=None):
                 nome_item = f"[{it['cod_produto']}] {nome_item}".strip()
 
             payload = {
+                "id": generate_secure_id(),
                 "user_id": user_id,
                 "numero_orcamento": it["n_orcamento"] or None,
-                
-                # ✅ ALTERAÇÃO 1: O nome_cliente agora pega o 'Nome_fantasia' do Excel.
-                # Coloquei 'or customer_name' como segurança caso venha vazio no Excel.
                 "nome_cliente": it["nome_fantasia"] or customer_name,
-                
                 "data_emissao": it["data_emissao"],
                 "data_vencimento": it["data_vencimento"],
                 "produto_ou_servico": "PRODUTO",
@@ -302,11 +295,7 @@ def import_receitas_xlsx(current_user=None):
                 "quantidade": it["qtd"],
                 "valor_unitario": str(it["unitario"]) if it["unitario"] is not None else None,
                 "valor_total": str(it["total"]) if it["total"] is not None else None,
-                
-                # ✅ ALTERAÇÃO 2: Unidade filial agora busca explicitamente a chave 'unidade_filial'.
-                # Se não existir essa coluna no Excel, fica None (vazio).
                 "unidade_filial": it.get("unidade_filial"),
-                
                 "projeto": projeto or None,
                 "centro_de_resultado": centro_de_resultado or None,
             }
@@ -314,17 +303,18 @@ def import_receitas_xlsx(current_user=None):
 
         insert_sql = """
             INSERT INTO public.receita_user
-            (user_id, numero_orcamento, nome_cliente, data_emissao, data_vencimento,
+            (id, user_id, numero_orcamento, nome_cliente, data_emissao, data_vencimento,
              produto_ou_servico, nome_produto_ou_servico, quantidade,
              valor_unitario, valor_total, unidade_filial, projeto, centro_de_resultado)
             VALUES
-            (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
+            (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
         """
 
         values = []
         for p in receitas_payloads:
             values.append(
                 (
+                    p["id"],
                     p["user_id"],
                     p["numero_orcamento"],
                     p["nome_cliente"],

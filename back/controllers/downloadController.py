@@ -7,7 +7,8 @@ from config.db import get_connection
 # Define a pasta raiz onde o Flask está rodando (geralmente a pasta 'back')
 BASE_DIR = os.getcwd()
 
-def download_document_by_id(doc_id: int):
+
+def download_document_by_id(doc_id: str):
     conn = None
     try:
         conn = get_connection()
@@ -16,8 +17,8 @@ def download_document_by_id(doc_id: int):
         # 1. Busca o caminho do arquivo no banco pelo ID
         cur.execute(
             """
-            SELECT caminho_arquivo 
-            FROM public.docs_clientes 
+            SELECT caminho_arquivo
+            FROM public.docs_clientes
             WHERE id = %s
             LIMIT 1;
             """,
@@ -33,23 +34,18 @@ def download_document_by_id(doc_id: int):
         relative_path = row[0]
 
         if not relative_path:
-             return jsonify({"error": "Invalid path", "message": "O caminho do arquivo está vazio no banco."}), 400
+            return jsonify({"error": "Invalid path", "message": "O caminho do arquivo está vazio no banco."}), 400
 
-        # --- CORREÇÃO DE CAMINHO ---
         # Remove barras iniciais para garantir que o join funcione
-        # Se relative_path for "/docs/..." o os.path.join ignora o BASE_DIR. Isso corrige.
-        clean_relative_path = relative_path.lstrip('/\\')
-        
-        # Cria o caminho absoluto: C:\Users\...\back + docs\Mariana...\arquivo.pdf
-        file_path = os.path.join(BASE_DIR, clean_relative_path)
+        clean_relative_path = relative_path.lstrip("/\\")
 
-        # --- DEBUG (Olhe no seu terminal do VS Code) ---
-   
+        # Cria o caminho absoluto
+        file_path = os.path.join(BASE_DIR, clean_relative_path)
 
         # 3. Verifica se o arquivo físico existe no disco
         if not os.path.exists(file_path):
             return jsonify({
-                "error": "File missing", 
+                "error": "File missing",
                 "message": f"O arquivo não foi encontrado no servidor.\nCaminho buscado: {file_path}"
             }), 404
 

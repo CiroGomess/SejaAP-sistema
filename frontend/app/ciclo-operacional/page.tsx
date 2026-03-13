@@ -32,7 +32,8 @@ import {
 
 const STORAGE_KEY = 'selectedClient';
 const CYCLE_UPSERT_ENDPOINT = '/client-cycle-single';
-const CYCLE_GET_ENDPOINT = (userId: number) => `/client-cycle-single?user_id=${userId}`;
+const CYCLE_GET_ENDPOINT = (userId: string) =>
+  `/client-cycle-single?user_id=${encodeURIComponent(userId)}`;
 
 function pickApiError(data: any): string {
   if (!data) return 'Erro inesperado.';
@@ -40,6 +41,7 @@ function pickApiError(data: any): string {
   if (typeof data.detail === 'string') return data.detail;
   if (typeof data.error === 'string') return data.error;
   if (typeof data.message === 'string') return data.message;
+  if (typeof data.details === 'string') return data.details;
   return 'Falha ao processar a requisição.';
 }
 
@@ -206,9 +208,9 @@ export default function CicloOperacionalPage() {
 
       if (parsed?.id && parsed?.code && parsed?.name) {
         setActiveClient({
-          id: Number(parsed.id),
-          code: String(parsed.code),
-          name: String(parsed.name),
+          id: String(parsed.id).trim(),
+          code: String(parsed.code).trim(),
+          name: String(parsed.name).trim(),
         });
       } else {
         setActiveClient(null);
@@ -233,16 +235,15 @@ export default function CicloOperacionalPage() {
 
   useEffect(() => {
     async function loadCycle() {
-      if (!activeClient?.id) return;
+      const safeUserId = String(activeClient?.id || '').trim();
+      if (!safeUserId) return;
 
       setLoading(true);
 
       try {
-        const res = await services(CYCLE_GET_ENDPOINT(activeClient.id), {
+        const res = await services(CYCLE_GET_ENDPOINT(safeUserId), {
           method: 'GET',
         });
-
-        console.log('Resposta da API:', res);
 
         if (!res?.success) {
           setDragSteps(buildDefaultSteps());
@@ -279,7 +280,6 @@ export default function CicloOperacionalPage() {
 
         setDragSteps(ordered);
       } catch (e: any) {
-        console.error('Erro ao carregar:', e);
         setDragSteps(buildDefaultSteps());
         showAlert(e?.message || 'Erro ao carregar ciclo.', 'error');
       } finally {
@@ -291,7 +291,9 @@ export default function CicloOperacionalPage() {
   }, [activeClient?.id]);
 
   async function handleSaveCycle() {
-    if (!activeClient?.id) {
+    const safeUserId = String(activeClient?.id || '').trim();
+
+    if (!safeUserId) {
       showAlert('Selecione um cliente antes de salvar.', 'warning');
       return;
     }
@@ -309,7 +311,7 @@ export default function CicloOperacionalPage() {
     }
 
     const payload = {
-      user_id: activeClient.id,
+      user_id: safeUserId,
       step1: dragSteps[0].label,
       step2: dragSteps[1].label,
       step3: dragSteps[2].label,

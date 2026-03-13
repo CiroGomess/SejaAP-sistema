@@ -34,6 +34,6 @@ def token_required(fn):
 @toon_routes.get("/toon")
 @token_required
 def route_toon(current_user):
-    # /toon?user_id=10
-    user_id = request.args.get("user_id", type=int)
+    # /toon?user_id=<hash>
+    user_id = request.args.get("user_id")
     return toon_abc_ano_recente(current_user, user_id=user_id)

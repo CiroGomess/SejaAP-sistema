@@ -12,6 +12,8 @@ import {
   IconButton,
   Alert,
   Chip,
+  Fade,
+  Stack,
 } from '@mui/material';
 
 import {
@@ -19,7 +21,6 @@ import {
   UploadFile as UploadFileIcon,
   CheckCircle as CheckCircleIcon,
   ErrorOutline as ErrorOutlineIcon,
-  HourglassTop as HourglassTopIcon,
   Assessment as AssessmentIcon,
 } from '@mui/icons-material';
 
@@ -30,26 +31,25 @@ type Props = {
   state: UploadState;
   fileName?: string;
   fileSizeBytes?: number;
-
   errorMessage?: string;
-
   rowsMapped?: number;
   rowsInserted?: number;
   categoria?: string;
-
-  onClose: () => void; // só deve fechar quando success OU error
+  onClose: () => void;
 };
 
 function formatBytes(bytes?: number) {
-  if (!bytes || bytes <= 0) return '-';
+  if (!bytes || bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB'];
   let size = bytes;
   let u = 0;
+
   while (size >= 1024 && u < units.length - 1) {
     size = size / 1024;
     u++;
   }
-  return `${size.toFixed(u === 0 ? 0 : 2)} ${units[u]}`;
+
+  return `${size.toFixed(1)} ${units[u]}`;
 }
 
 export default function AnaliseMargemXlsxUploadModal({
@@ -66,12 +66,20 @@ export default function AnaliseMargemXlsxUploadModal({
   const isBlocking = state === 'uploading';
 
   return (
-    <Dialog open={open} fullScreen>
+    <Dialog
+      open={open}
+      fullScreen
+      TransitionComponent={Fade}
+      PaperProps={{
+        style: { backgroundColor: 'transparent', boxShadow: 'none' },
+      }}
+    >
       <Box
         sx={{
           height: '100%',
-          bgcolor: '#0b1220',
-          backgroundImage: 'radial-gradient(circle at 25% 20%, rgba(255,102,0,0.16), transparent 42%)',
+          width: '100%',
+          bgcolor: 'rgba(15, 23, 42, 0.75)',
+          backdropFilter: 'blur(16px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -82,234 +90,202 @@ export default function AnaliseMargemXlsxUploadModal({
           elevation={0}
           sx={{
             width: '100%',
-            maxWidth: 920,
-            borderRadius: 4,
+            maxWidth: 650,
+            borderRadius: '20px',
             overflow: 'hidden',
-            border: '1px solid rgba(255,255,255,0.08)',
-            bgcolor: 'rgba(17,24,39,0.78)',
-            backdropFilter: 'blur(10px)',
-            color: '#fff',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            bgcolor: '#1e293b',
+            color: '#f8fafc',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6)',
           }}
         >
           {/* Header */}
-          <Box
-            sx={{
-              p: 3,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 2,
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <UploadFileIcon sx={{ color: '#ff6600' }} />
-                <AssessmentIcon sx={{ color: 'rgba(255,255,255,0.75)' }} />
+          <Box sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Box
+                sx={{
+                  bgcolor: 'rgba(255, 184, 0, 0.1)',
+                  p: 1.2,
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <AssessmentIcon sx={{ color: '#ffb800' }} />
               </Box>
-
               <Box>
-                <Typography sx={{ fontWeight: 950, fontSize: 18 }}>
-                  Importação XLSX — Análise de Margem
+                <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.02em' }}>
+                  Análise de Margem
                 </Typography>
-                <Typography sx={{ color: 'rgba(255,255,255,0.70)', fontSize: 13 }}>
-                  O upload é enviado ao backend e a tela fica bloqueada até finalizar.
+                <Typography sx={{ color: '#94a3b8', fontSize: '0.85rem' }}>
+                  Importação XLSX • Sincronização
                 </Typography>
               </Box>
             </Box>
 
-            <IconButton
-              onClick={onClose}
-              disabled={isBlocking}
-              sx={{
-                color: '#fff',
-                border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: 2,
-              }}
-            >
-              <CloseIcon />
-            </IconButton>
+            {!isBlocking && (
+              <IconButton
+                onClick={onClose}
+                sx={{
+                  color: '#94a3b8',
+                  '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.05)' },
+                }}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            )}
           </Box>
 
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+          <Divider sx={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
           {/* Body */}
-          <Box sx={{ p: 3 }}>
+          <Box sx={{ p: 4 }}>
+            {/* Info do Arquivo */}
             <Box
               sx={{
-                p: 2,
-                borderRadius: 3,
-                border: '1px solid rgba(255,255,255,0.10)',
-                bgcolor: 'rgba(255,255,255,0.04)',
+                p: 3,
+                borderRadius: '16px',
+                bgcolor: 'rgba(15, 23, 42, 0.3)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                mb: 3,
               }}
             >
-              <Typography sx={{ fontWeight: 900, mb: 1 }}>Arquivo selecionado</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                <UploadFileIcon sx={{ color: '#94a3b8', fontSize: 20 }} />
+                <Typography sx={{ fontWeight: 600, fontSize: '0.95rem', wordBreak: 'break-word' }}>
+                  {fileName || 'Arquivo não identificado'}
+                </Typography>
+              </Box>
 
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 <Chip
-                  label={fileName ? fileName : '—'}
-                  sx={{
-                    bgcolor: 'rgba(255,102,0,0.14)',
-                    color: '#fff',
-                    fontWeight: 900,
-                    borderRadius: 2,
-                  }}
-                />
-                <Chip
-                  label={`Tamanho: ${formatBytes(fileSizeBytes)}`}
-                  sx={{
-                    bgcolor: 'rgba(255,255,255,0.06)',
-                    color: '#fff',
-                    fontWeight: 800,
-                    borderRadius: 2,
-                  }}
+                  label={formatBytes(fileSizeBytes)}
+                  size="small"
+                  sx={{ bgcolor: '#334155', color: '#cbd5e1', fontWeight: 600 }}
                 />
                 {categoria && (
                   <Chip
-                    label={`Categoria: ${categoria}`}
+                    label={categoria}
+                    size="small"
                     sx={{
-                      bgcolor: 'rgba(255,255,255,0.06)',
-                      color: '#fff',
-                      fontWeight: 800,
-                      borderRadius: 2,
+                      bgcolor: 'rgba(255, 184, 0, 0.1)',
+                      color: '#ffb800',
+                      fontWeight: 600,
+                      border: '1px solid rgba(255, 184, 0, 0.2)',
                     }}
                   />
                 )}
               </Box>
             </Box>
 
-            <Box sx={{ mt: 2 }}>
+            {/* Status do Processamento */}
+            <Box>
               {state === 'uploading' && (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 2,
-                    p: 2,
-                    borderRadius: 3,
-                    border: '1px solid rgba(255,102,0,0.25)',
-                    bgcolor: 'rgba(255,102,0,0.10)',
-                  }}
-                >
-                  <CircularProgress />
-                  <Box>
-                    <Typography sx={{ fontWeight: 950 }}>Processando importação…</Typography>
-                    <Typography sx={{ color: 'rgba(255,255,255,0.75)', fontSize: 13 }}>
-                      Não feche a página. A importação pode levar alguns segundos dependendo do tamanho da planilha.
-                    </Typography>
-                  </Box>
-                  <HourglassTopIcon sx={{ ml: 'auto', color: 'rgba(255,255,255,0.55)' }} />
+                <Box sx={{ textAlign: 'center', py: 2 }}>
+                  <CircularProgress size={32} thickness={5} sx={{ color: '#ffb800', mb: 2 }} />
+                  <Typography sx={{ fontWeight: 600 }}>Processando dados...</Typography>
+                  <Typography sx={{ color: '#94a3b8', fontSize: '0.85rem', mt: 0.5 }}>
+                    Isso pode levar um momento, não feche a janela.
+                  </Typography>
                 </Box>
               )}
 
               {state === 'success' && (
-                <Box>
-                  <Alert
-                    icon={<CheckCircleIcon />}
-                    severity="success"
-                    sx={{
-                      mt: 2,
-                      borderRadius: 3,
-                      bgcolor: 'rgba(34,197,94,0.14)',
-                      color: '#d1fae5',
-                      border: '1px solid rgba(34,197,94,0.22)',
-                      '& .MuiAlert-icon': { color: '#22c55e' },
-                    }}
-                  >
-                    Upload concluído com sucesso. Os dados foram processados pelo backend.
-                  </Alert>
-
-                  {(typeof rowsMapped === 'number' || typeof rowsInserted === 'number') && (
-                    <Box
+                <Fade in>
+                  <Box>
+                    <Alert
+                      icon={<CheckCircleIcon />}
+                      severity="success"
                       sx={{
-                        mt: 2,
-                        p: 2,
-                        borderRadius: 3,
-                        border: '1px solid rgba(255,255,255,0.10)',
-                        bgcolor: 'rgba(255,255,255,0.04)',
+                        borderRadius: '12px',
+                        bgcolor: 'rgba(34, 197, 94, 0.1)',
+                        color: '#bbf7d0',
+                        border: '1px solid rgba(34, 197, 94, 0.2)',
+                        mb: 3,
                       }}
                     >
-                      <Typography sx={{ fontWeight: 900, mb: 1 }}>Resumo do processamento</Typography>
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                        <Chip
-                          label={`Linhas mapeadas: ${typeof rowsMapped === 'number' ? rowsMapped : '-'}`}
-                          sx={{
-                            bgcolor: 'rgba(255,255,255,0.06)',
-                            color: '#fff',
-                            fontWeight: 800,
-                            borderRadius: 2,
-                          }}
-                        />
-                        <Chip
-                          label={`Linhas inseridas: ${typeof rowsInserted === 'number' ? rowsInserted : '-'}`}
-                          sx={{
-                            bgcolor: 'rgba(255,255,255,0.06)',
-                            color: '#fff',
-                            fontWeight: 800,
-                            borderRadius: 2,
-                          }}
-                        />
-                      </Box>
-                    </Box>
-                  )}
-                </Box>
+                      Processamento concluído com sucesso!
+                    </Alert>
+
+                    <Paper
+                      elevation={0}
+                      sx={{
+                        p: 3,
+                        borderRadius: '16px',
+                        bgcolor: 'rgba(15, 23, 42, 0.35)',
+                        border: '1px solid rgba(255,255,255,0.05)',
+                      }}
+                    >
+                      <Stack spacing={1.5}>
+                        <Typography sx={{ fontWeight: 700, fontSize: '0.95rem', color: '#f8fafc' }}>
+                          Resumo da importação
+                        </Typography>
+
+                        <Typography sx={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
+                          <strong>Linhas mapeadas:</strong> {typeof rowsMapped === 'number' ? rowsMapped : '-'}
+                        </Typography>
+
+                        <Typography sx={{ color: '#cbd5e1', fontSize: '0.9rem' }}>
+                          <strong>Linhas inseridas:</strong> {typeof rowsInserted === 'number' ? rowsInserted : '-'}
+                        </Typography>
+                      </Stack>
+                    </Paper>
+                  </Box>
+                </Fade>
               )}
 
               {state === 'error' && (
-                <Alert
-                  icon={<ErrorOutlineIcon />}
-                  severity="error"
-                  sx={{
-                    mt: 2,
-                    borderRadius: 3,
-                    bgcolor: 'rgba(239,68,68,0.14)',
-                    color: '#fee2e2',
-                    border: '1px solid rgba(239,68,68,0.22)',
-                    '& .MuiAlert-icon': { color: '#ef4444' },
-                  }}
-                >
-                  Falha ao importar o XLSX. {errorMessage ? `Detalhes: ${errorMessage}` : ''}
-                </Alert>
+                <Fade in>
+                  <Alert
+                    icon={<ErrorOutlineIcon />}
+                    severity="error"
+                    sx={{
+                      borderRadius: '12px',
+                      bgcolor: 'rgba(239, 68, 68, 0.1)',
+                      color: '#fecaca',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                    }}
+                  >
+                    {errorMessage || 'Erro ao processar a planilha.'}
+                  </Alert>
+                </Fade>
               )}
             </Box>
           </Box>
 
-          <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
-
           {/* Footer */}
-          <Box sx={{ p: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
-            {(state === 'success' || state === 'error') && (
-              <Button
-                variant="contained"
-                onClick={onClose}
-                sx={{
-                  textTransform: 'none',
-                  borderRadius: 2,
-                  px: 3,
-                  fontWeight: 950,
-                  bgcolor: '#ff6600',
-                  '&:hover': { bgcolor: '#ff7a1a' },
-                }}
-              >
-                Fechar
-              </Button>
-            )}
-
-            {state === 'uploading' && (
-              <Button
-                variant="outlined"
-                disabled
-                sx={{
-                  textTransform: 'none',
-                  borderRadius: 2,
-                  px: 3,
-                  fontWeight: 950,
-                  borderColor: 'rgba(255,255,255,0.18)',
-                  color: 'rgba(255,255,255,0.65)',
-                }}
-              >
-                Processando…
-              </Button>
-            )}
+          <Box
+            sx={{
+              p: 3,
+              bgcolor: 'rgba(15, 23, 42, 0.2)',
+              display: 'flex',
+              justifyContent: 'center',
+            }}
+          >
+            <Button
+              fullWidth
+              variant="contained"
+              onClick={onClose}
+              disabled={isBlocking}
+              sx={{
+                py: 1.5,
+                textTransform: 'none',
+                borderRadius: '12px',
+                fontWeight: 700,
+                fontSize: '0.95rem',
+                bgcolor: state === 'error' ? '#ef4444' : '#ffb800',
+                color: '#1e293b',
+                '&:hover': {
+                  bgcolor: state === 'error' ? '#dc2626' : '#e6a600',
+                },
+                '&.Mui-disabled': {
+                  bgcolor: 'rgba(255,255,255,0.05)',
+                  color: 'rgba(255,255,255,0.2)',
+                },
+              }}
+            >
+              {state === 'uploading' ? 'Sincronizando...' : 'Concluir e Voltar'}
+            </Button>
           </Box>
         </Paper>
       </Box>

@@ -3,7 +3,6 @@ import jwt
 from functools import wraps
 from flask import Blueprint, request, jsonify
 
-# Importa as funções do controller
 from controllers.contabilidadeController import (
     upload_contabilidade,
     get_contabilidade_dados,
@@ -51,20 +50,19 @@ def route_upload_contabilidade(current_user):
 def route_get_contabilidade(current_user):
     """
     Rota para listar dados com paginação.
-    Query Params lidos no controller: 
-      ?user_id=10
+    Query Params lidos no controller:
+      ?user_id=<hash>
       &ano=2024
       &page=1
       &per_page=10
     """
-    # A mágica da paginação acontece dentro do controller, 
-    # então aqui só precisamos chamar a função.
     return get_contabilidade_dados(current_user)
+
 
 @contabilidade_routes.get("/contabilidade/dashboard")
 @token_required
 def route_get_contabilidade_dashboard(current_user):
     """
-    GET /contabilidade/dashboard?user_id=10&ano=2026
+    GET /contabilidade/dashboard?user_id=<hash>&ano=2026
     """
     return get_contabilidade_dashboard(current_user)

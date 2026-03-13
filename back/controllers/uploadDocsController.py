@@ -5,6 +5,7 @@ from flask import request, jsonify, send_file
 from werkzeug.utils import secure_filename
 
 from config.db import get_connection
+from utils.helpers import generate_secure_id
 
 # =========================
 # Regras / Config
@@ -49,7 +50,7 @@ def _sanitize_folder_name(name: str) -> str:
     return name or "cliente"
 
 
-def _customer_id_exists(cur, customer_id: int) -> bool:
+def _customer_id_exists(cur, customer_id: str) -> bool:
     cur.execute(
         """
         SELECT 1
@@ -62,10 +63,10 @@ def _customer_id_exists(cur, customer_id: int) -> bool:
     return cur.fetchone() is not None
 
 
-def _get_customer_folder_name(cur, id_cliente: int) -> str | None:
+def _get_customer_folder_name(cur, id_cliente: str) -> str | None:
     """
     Retorna nome de pasta do cliente baseado no cadastro.
-    Regra (conforme seu pedido):
+    Regra:
       1) first_name + last_name
       2) company_name
       3) code
@@ -104,7 +105,6 @@ def _get_customer_folder_name(cur, id_cliente: int) -> str | None:
     return _sanitize_folder_name(base)
 
 
-
 def _safe_abs_path(caminho_arquivo: str) -> str:
     """
     Garante que o caminho do arquivo está dentro de DOCS_BASE_DIR.
@@ -112,12 +112,9 @@ def _safe_abs_path(caminho_arquivo: str) -> str:
     if not caminho_arquivo:
         raise ValueError("Empty caminho_arquivo")
 
-    # normaliza e resolve path
     base_abs = os.path.abspath(DOCS_BASE_DIR)
     file_abs = os.path.abspath(caminho_arquivo)
 
-    # se salvou relativo no DB ("docs/..."), abspath resolve relativo ao cwd
-    # então garantimos que o prefixo é o base_abs
     if not file_abs.startswith(base_abs + os.sep) and file_abs != base_abs:
         raise ValueError("Unsafe file path")
 
@@ -137,7 +134,7 @@ def _pick_api_error(data: any) -> str:
     return "Falha ao processar a requisição."
 
 
-def _save_file_for_customer(cur, id_cliente: int, categoria: str, file_storage):
+def _save_file_for_customer(cur, id_cliente: str, categoria: str, file_storage):
     """
     Salva arquivo fisicamente e retorna caminho relativo (ex.: docs/Mariana_Alves/RG/uuid_nome.pdf)
     """
@@ -194,7 +191,7 @@ def _save_file_for_customer(cur, id_cliente: int, categoria: str, file_storage):
     return rel_path, None
 
 
-def _get_doc_by_id(cur, doc_id: int):
+def _get_doc_by_id(cur, doc_id: str):
     cur.execute(
         """
         SELECT id, id_cliente, caminho_arquivo, categoria, data_envio
@@ -239,34 +236,33 @@ def upload_doc_cliente(current_user=None):
     if not categoria:
         return jsonify({"error": "Missing categoria"}), 400
 
-    try:
-        id_cliente_int = int(id_cliente)
-        if id_cliente_int <= 0:
-            raise ValueError()
-    except Exception:
-        return jsonify({"error": "Invalid id_cliente", "details": "id_cliente must be a positive integer"}), 400
+    id_cliente = str(id_cliente).strip()
+    if not id_cliente:
+        return jsonify({"error": "Invalid id_cliente", "details": "id_cliente is required"}), 400
 
     conn = None
     try:
         conn = get_connection()
         cur = conn.cursor()
 
-        if not _customer_id_exists(cur, id_cliente_int):
+        if not _customer_id_exists(cur, id_cliente):
             return jsonify(
                 {"error": "Invalid id_cliente", "details": "id_cliente must exist in public.clientes.id"}
             ), 400
 
-        caminho_arquivo, err = _save_file_for_customer(cur, id_cliente_int, categoria, file)
+        caminho_arquivo, err = _save_file_for_customer(cur, id_cliente, categoria, file)
         if err:
             return err  # (json, status)
 
+        novo_id = generate_secure_id()
+
         cur.execute(
             """
-            INSERT INTO public.docs_clientes (id_cliente, caminho_arquivo, categoria)
-            VALUES (%s, %s, %s)
+            INSERT INTO public.docs_clientes (id, id_cliente, caminho_arquivo, categoria)
+            VALUES (%s, %s, %s, %s)
             RETURNING id, id_cliente, caminho_arquivo, categoria, data_envio;
             """,
-            (id_cliente_int, caminho_arquivo, categoria),
+            (novo_id, id_cliente, caminho_arquivo, categoria),
         )
         r = cur.fetchone()
         conn.commit()
@@ -285,9 +281,9 @@ def upload_doc_cliente(current_user=None):
 # =========================
 # LIST
 # =========================
-def list_docs_clientes(current_user=None, id_cliente: int | None = None, categoria: str | None = None):
+def list_docs_clientes(current_user=None, id_cliente: str | None = None, categoria: str | None = None):
     """
-    GET /docs-clientes?id_cliente=1&categoria=RG
+    GET /docs-clientes?id_cliente=<hash>&categoria=RG
     """
     conn = None
     try:
@@ -302,9 +298,9 @@ def list_docs_clientes(current_user=None, id_cliente: int | None = None, categor
         params = []
         where = []
 
-        if id_cliente:
+        if id_cliente is not None and str(id_cliente).strip():
             where.append("id_cliente = %s")
-            params.append(int(id_cliente))
+            params.append(str(id_cliente).strip())
 
         if categoria:
             where.append("categoria = %s")
@@ -331,7 +327,7 @@ def list_docs_clientes(current_user=None, id_cliente: int | None = None, categor
 # =========================
 # GET BY ID (metadata)
 # =========================
-def get_doc_cliente(current_user=None, doc_id: int = 0):
+def get_doc_cliente(current_user=None, doc_id: str = ""):
     conn = None
     try:
         conn = get_connection()
@@ -353,7 +349,7 @@ def get_doc_cliente(current_user=None, doc_id: int = 0):
 # =========================
 # READ/DOWNLOAD FILE
 # =========================
-def download_doc_cliente(current_user=None, doc_id: int = 0):
+def download_doc_cliente(current_user=None, doc_id: str = ""):
     """
     GET /docs-clientes/<id>/download
     Retorna o arquivo físico.
@@ -373,7 +369,6 @@ def download_doc_cliente(current_user=None, doc_id: int = 0):
         if not os.path.exists(abs_path):
             return jsonify({"error": "File not found on disk", "details": caminho_arquivo}), 404
 
-        # as_attachment=True força download
         return send_file(abs_path, as_attachment=True)
 
     except Exception as e:
@@ -386,10 +381,10 @@ def download_doc_cliente(current_user=None, doc_id: int = 0):
 # =========================
 # UPDATE (metadata only)
 # =========================
-def update_doc_cliente(current_user=None, doc_id: int = 0):
+def update_doc_cliente(current_user=None, doc_id: str = ""):
     """
     PUT /docs-clientes/<id>
-    JSON body (qualquer um):
+    JSON body:
       - categoria
       - id_cliente
     Não troca o arquivo, só atualiza metadados.
@@ -402,16 +397,12 @@ def update_doc_cliente(current_user=None, doc_id: int = 0):
     if "id_cliente" in data:
         payload["id_cliente"] = data.get("id_cliente")
 
-    # valida
     if not payload:
         return jsonify({"error": "No valid fields to update"}), 400
 
     if "id_cliente" in payload:
-        try:
-            payload["id_cliente"] = int(payload["id_cliente"])
-            if payload["id_cliente"] <= 0:
-                raise ValueError()
-        except Exception:
+        payload["id_cliente"] = str(payload["id_cliente"]).strip()
+        if not payload["id_cliente"]:
             return jsonify({"error": "Invalid id_cliente"}), 400
 
     if "categoria" in payload:
@@ -423,12 +414,10 @@ def update_doc_cliente(current_user=None, doc_id: int = 0):
         conn = get_connection()
         cur = conn.cursor()
 
-        # existe doc?
         r = _get_doc_by_id(cur, doc_id)
         if not r:
             return jsonify({"error": "Doc not found"}), 404
 
-        # valida cliente se mudou
         if "id_cliente" in payload:
             if not _customer_id_exists(cur, payload["id_cliente"]):
                 return jsonify(
@@ -471,21 +460,21 @@ def update_doc_cliente(current_user=None, doc_id: int = 0):
 # =========================
 # REPLACE FILE (UPDATE ARQUIVO)
 # =========================
-def replace_doc_file(current_user=None, doc_id: int = 0):
+def replace_doc_file(current_user=None, doc_id: str = ""):
     """
     PUT /docs-clientes/<id>/upload
     multipart/form-data:
       - file
       - (opcional) categoria
       - (opcional) id_cliente
-    Substitui o arquivo (remove o antigo) e atualiza caminho_arquivo + data_envio.
+    Substitui o arquivo e atualiza caminho_arquivo + data_envio.
     """
     file = request.files.get("file")
     if not file:
         return jsonify({"error": "Missing file", "details": "field 'file' is required"}), 400
 
-    categoria = request.form.get("categoria")  # opcional
-    id_cliente = request.form.get("id_cliente")  # opcional
+    categoria = request.form.get("categoria")
+    id_cliente = request.form.get("id_cliente")
 
     conn = None
     try:
@@ -500,14 +489,10 @@ def replace_doc_file(current_user=None, doc_id: int = 0):
         old_path = old[2]
         old_categoria = old[3]
 
-        # define novos valores (ou mantém antigos)
         new_id_cliente = old_id_cliente
         if id_cliente is not None and str(id_cliente).strip():
-            try:
-                new_id_cliente = int(id_cliente)
-                if new_id_cliente <= 0:
-                    raise ValueError()
-            except Exception:
+            new_id_cliente = str(id_cliente).strip()
+            if not new_id_cliente:
                 return jsonify({"error": "Invalid id_cliente"}), 400
 
             if not _customer_id_exists(cur, new_id_cliente):
@@ -519,12 +504,10 @@ def replace_doc_file(current_user=None, doc_id: int = 0):
         if categoria is not None and str(categoria).strip():
             new_categoria = str(categoria).strip()
 
-        # salva novo arquivo
         new_path, err = _save_file_for_customer(cur, new_id_cliente, new_categoria, file)
         if err:
             return err
 
-        # atualiza no DB
         cur.execute(
             """
             UPDATE public.docs_clientes
@@ -540,7 +523,6 @@ def replace_doc_file(current_user=None, doc_id: int = 0):
         r = cur.fetchone()
         conn.commit()
 
-        # apaga arquivo antigo do disco (best effort)
         try:
             old_abs = _safe_abs_path(old_path)
             if os.path.exists(old_abs):
@@ -562,7 +544,7 @@ def replace_doc_file(current_user=None, doc_id: int = 0):
 # =========================
 # DELETE (DB + arquivo)
 # =========================
-def delete_doc_cliente(current_user=None, doc_id: int = 0):
+def delete_doc_cliente(current_user=None, doc_id: str = ""):
     conn = None
     try:
         conn = get_connection()
@@ -581,7 +563,6 @@ def delete_doc_cliente(current_user=None, doc_id: int = 0):
 
         conn.commit()
 
-        # remove arquivo do disco (best effort)
         try:
             abs_path = _safe_abs_path(caminho_arquivo)
             if os.path.exists(abs_path):

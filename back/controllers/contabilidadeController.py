@@ -4,6 +4,7 @@ from math import ceil
 from flask import request, jsonify
 from config.db import get_connection
 from datetime import datetime, date
+from utils.helpers import generate_secure_id
 
 # =========================
 # Config / Validation
@@ -13,7 +14,7 @@ ALLOWED_EXTENSIONS = {"csv", "xlsx", "xls"}
 def _allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def _customer_id_exists(cur, user_id: int) -> bool:
+def _customer_id_exists(cur, user_id: str) -> bool:
     cur.execute("SELECT 1 FROM public.clientes WHERE id = %s LIMIT 1;", (user_id,))
     return cur.fetchone() is not None
 
@@ -28,8 +29,12 @@ def _parse_file_data(file_storage) -> list[dict] | None:
         df.columns = [str(c).strip().lower() for c in df.columns]
 
         col_map = {
-            "descrição": "descricao", "descricao": "descricao", "description": "descricao",
-            "valor (r$)": "valor", "valor": "valor", "value": "valor"
+            "descrição": "descricao",
+            "descricao": "descricao",
+            "description": "descricao",
+            "valor (r$)": "valor",
+            "valor": "valor",
+            "value": "valor",
         }
         df.rename(columns=col_map, inplace=True)
 
@@ -57,8 +62,6 @@ def _parse_file_data(file_storage) -> list[dict] | None:
 # =========================
 # UPLOAD
 # =========================
-
-
 def upload_contabilidade(current_user=None):
     """
     Faz o upload de dados contábeis, acumulando-os no banco de dados.
@@ -75,29 +78,34 @@ def upload_contabilidade(current_user=None):
     if not user_id or not ano:
         return jsonify({"error": "user_id e ano são obrigatórios"}), 400
 
+    user_id = str(user_id).strip()
+    if not user_id:
+        return jsonify({"error": "user_id é obrigatório"}), 400
+
     try:
-        user_id = int(user_id)
         ano = int(ano)
     except (ValueError, TypeError):
-        return jsonify({"error": "user_id e ano devem ser números inteiros"}), 400
+        return jsonify({"error": "ano deve ser número inteiro"}), 400
 
-    # 2. Parse do Arquivo (Usando a lógica de leitura robusta)
+    if not file.filename or not _allowed_file(file.filename):
+        return jsonify({"error": "Formato de arquivo inválido. Envie csv, xlsx ou xls"}), 400
+
+    # 2. Parse do Arquivo
     try:
-        # Reposiciona o ponteiro do arquivo para garantir leitura total
         file.seek(0)
         filename = file.filename.lower()
-        
-        if filename.endswith('.csv'):
-            # Tenta ler CSV com os dois separadores mais comuns
+
+        if filename.endswith(".csv"):
             try:
-                df = pd.read_csv(file, sep=',')
-                if len(df.columns) < 2: raise Exception()
-            except:
+                df = pd.read_csv(file, sep=",")
+                if len(df.columns) < 2:
+                    raise Exception()
+            except Exception:
                 file.seek(0)
-                df = pd.read_csv(file, sep=';')
+                df = pd.read_csv(file, sep=";")
         else:
             df = pd.read_excel(file)
-        
+
         parsed_data = df.to_dict(orient="records")
     except Exception as e:
         return jsonify({"error": "Erro ao ler arquivo", "details": str(e)}), 400
@@ -111,14 +119,15 @@ def upload_contabilidade(current_user=None):
         conn = get_connection()
         cur = conn.cursor()
 
-        # --- REMOVIDO O DELETE --- 
-        # Agora a função apenas ADICIONA os dados, permitindo acumular registros.
+        if not _customer_id_exists(cur, user_id):
+            return jsonify({"error": "Invalid user_id", "details": "user_id must exist in public.clientes.id"}), 400
 
         insert_query = """
-            INSERT INTO public.contabilidade_dados (user_id, ano, descricao, valor, categoria, data_registro)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO public.contabilidade_dados
+                (id, user_id, ano, descricao, valor, categoria, data_registro)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """
-        
+
         values_to_insert = []
         for item in parsed_data:
             data_raw = None
@@ -128,7 +137,7 @@ def upload_contabilidade(current_user=None):
             # Busca dinâmica: ignora maiúsculas, espaços e acentos nos nomes das colunas
             for key, value in item.items():
                 k_norm = str(key).strip().lower().replace(" ", "").replace("-", "").replace("_", "")
-                
+
                 if "registro" in k_norm or "data" in k_norm:
                     data_raw = value
                 elif "desc" in k_norm:
@@ -138,29 +147,38 @@ def upload_contabilidade(current_user=None):
 
             # Conversão segura da data para objeto date do Python
             data_formatada = None
-            if data_raw and str(data_raw).lower() != 'nan':
+            if data_raw and str(data_raw).lower() != "nan":
                 if isinstance(data_raw, (date, datetime)):
                     data_formatada = data_raw if isinstance(data_raw, date) else data_raw.date()
                 elif isinstance(data_raw, str) and data_raw.strip():
+                    data_clean = data_raw.strip().split(" ")[0]
                     try:
-                        # Tenta formato brasileiro: 10/03/2026
-                        data_clean = data_raw.strip().split(" ")[0]
                         data_formatada = datetime.strptime(data_clean, "%d/%m/%Y").date()
                     except ValueError:
                         try:
-                            # Tenta formato ISO: 2026-03-10
                             data_formatada = date.fromisoformat(data_clean)
-                        except:
+                        except Exception:
                             data_formatada = None
 
-            # Monta a tupla de inserção
+            # Conversão segura do valor
+            valor_float = 0.0
+            if val is not None and str(val).strip() != "":
+                try:
+                    valor_float = float(str(val).replace("R$", "").replace(" ", "").replace(".", "").replace(",", "."))
+                except Exception:
+                    valor_float = 0.0
+
+            # Geração do ID seguro por linha
+            novo_id = generate_secure_id()
+
             values_to_insert.append((
-                user_id, 
-                ano, 
-                str(desc) if desc else "Sem descrição", 
-                float(val) if val else 0.0, 
-                categoria, 
-                data_formatada
+                novo_id,
+                user_id,
+                ano,
+                str(desc).strip() if desc and str(desc).strip() else "Sem descrição",
+                valor_float,
+                categoria,
+                data_formatada,
             ))
 
         # Executa o insert em massa (bulk insert)
@@ -176,25 +194,31 @@ def upload_contabilidade(current_user=None):
         }), 201
 
     except Exception as e:
-        if conn: conn.rollback()
+        if conn:
+            conn.rollback()
         return jsonify({"error": "Erro de Banco de Dados", "details": str(e)}), 500
     finally:
-        if conn: conn.close()
-        
-        
+        if conn:
+            conn.close()
+
+
 # =========================
 # LIST WITH PAGINATION
 # =========================
 def get_contabilidade_dados(current_user=None):
     """
-    GET /contabilidade?user_id=10&ano=2024&page=1&per_page=10
+    GET /contabilidade?user_id=<hash>&ano=2024&page=1&per_page=10
     """
-    user_id = request.args.get("user_id", type=int)
+    user_id = request.args.get("user_id")
     ano = request.args.get("ano", type=int)
-    
+
     page = request.args.get("page", default=1, type=int)
     per_page = request.args.get("per_page", default=10, type=int)
 
+    if not user_id:
+        return jsonify({"error": "Missing user_id"}), 400
+
+    user_id = str(user_id).strip()
     if not user_id:
         return jsonify({"error": "Missing user_id"}), 400
 
@@ -247,14 +271,13 @@ def get_contabilidade_dados(current_user=None):
         # DATA query
         sql = f"""
             SELECT id, ano, descricao, valor, categoria, data_importacao
-            FROM public.contabilidade_dados 
+            FROM public.contabilidade_dados
             {where_sql}
             ORDER BY id ASC
             LIMIT %s OFFSET %s;
         """
-        # Add limit/offset params to existing params list
         query_params = params + [per_page, offset]
-        
+
         cur.execute(sql, tuple(query_params))
         rows = cur.fetchall()
 
@@ -283,12 +306,13 @@ def get_contabilidade_dados(current_user=None):
     except Exception as e:
         return jsonify({"error": "Fetch failed", "details": str(e)}), 500
     finally:
-        if conn: conn.close()
-        
-        
+        if conn:
+            conn.close()
+
+
 def get_contabilidade_dashboard(current_user=None):
     """
-    GET /contabilidade/dashboard?user_id=10&ano=2026
+    GET /contabilidade/dashboard?user_id=<hash>&ano=2026
 
     Regras:
     - filtro principal pelo campo ano
@@ -298,9 +322,13 @@ def get_contabilidade_dashboard(current_user=None):
     - resultado = receitas - despesas
     - margem_percentual = resultado / receitas * 100
     """
-    user_id = request.args.get("user_id", type=int)
+    user_id = request.args.get("user_id")
     ano = request.args.get("ano", type=int)
 
+    if not user_id:
+        return jsonify({"error": "Missing user_id"}), 400
+
+    user_id = str(user_id).strip()
     if not user_id:
         return jsonify({"error": "Missing user_id"}), 400
 
@@ -360,8 +388,6 @@ def get_contabilidade_dashboard(current_user=None):
 
         # =========================
         # Totais principais
-        # Receita = valor positivo
-        # Despesa = valor negativo (em valor absoluto)
         # =========================
         cur.execute(
             """
@@ -382,8 +408,6 @@ def get_contabilidade_dashboard(current_user=None):
 
         # =========================
         # Gráfico mensal
-        # Agora usa data_registro
-        # Continua respeitando o ano do filtro pela coluna "ano"
         # =========================
         cur.execute(
             """
@@ -444,7 +468,6 @@ def get_contabilidade_dashboard(current_user=None):
 
         # =========================
         # Top descrições
-        # Ordena pelo maior valor absoluto total
         # =========================
         cur.execute(
             """
@@ -483,7 +506,6 @@ def get_contabilidade_dashboard(current_user=None):
 
         # =========================
         # Top categorias
-        # Ordena pelo maior valor absoluto total
         # =========================
         cur.execute(
             """

@@ -13,12 +13,13 @@ from services.mistral_services_tk import (
 )
 
 from controllers.ticketMedioController import list_ticket_medio_produtos
+from utils.helpers import generate_secure_id
 
 
 # =========================
 # HELPERS DB
 # =========================
-def _customer_id_exists(cur, customer_id: int) -> bool:
+def _customer_id_exists(cur, customer_id: str) -> bool:
     cur.execute(
         """
         SELECT 1
@@ -31,7 +32,7 @@ def _customer_id_exists(cur, customer_id: int) -> bool:
     return cur.fetchone() is not None
 
 
-def _get_customer_ipca(cur, user_id: int):
+def _get_customer_ipca(cur, user_id: str):
     cur.execute(
         """
         SELECT ipca
@@ -65,7 +66,6 @@ def _normalize_analise_item(item: dict) -> dict:
     if not isinstance(riscos, list):
         riscos = []
 
-    # situação pode ser string ou lista
     if situacao is None:
         situacao = []
     if isinstance(situacao, str):
@@ -83,7 +83,7 @@ def _normalize_analise_item(item: dict) -> dict:
 
 
 def _save_analises_to_db(
-    user_id: int,
+    user_id: str,
     analises: list[dict],
     year: int,
     year_a: int,
@@ -111,7 +111,7 @@ def _save_analises_to_db(
         customer_ipca = _get_customer_ipca(cur, user_id)
 
         batch_id = str(uuid4())
-        inserted_ids: list[int] = []
+        inserted_ids: list[str] = []
 
         for item in analises:
             normalized = _normalize_analise_item(item)
@@ -119,10 +119,13 @@ def _save_analises_to_db(
             if not normalized.get("aspecto_avaliado") or not normalized.get("situacao_identificada"):
                 continue
 
+            novo_id = generate_secure_id()
+
             cur.execute(
                 """
                 INSERT INTO public.analises_ia_user_tk
                     (
+                      id,
                       batch_id,
                       user_id,
                       year, year_a, year_b,
@@ -135,10 +138,11 @@ def _save_analises_to_db(
                       meta
                     )
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
                 """,
                 (
+                    novo_id,
                     batch_id,
                     user_id,
                     year, year_a, year_b,
@@ -168,7 +172,7 @@ def _save_analises_to_db(
             conn.close()
 
 
-def _collect_all_items_for_ai(current_user, user_id: int, year_a: int, year_b: int, q=None, date_from=None, date_to=None):
+def _collect_all_items_for_ai(current_user, user_id: str, year_a: int, year_b: int, q=None, date_from=None, date_to=None):
     """
     Coleta itens em múltiplas páginas (per_page=100) para alimentar a IA.
     """
@@ -179,7 +183,7 @@ def _collect_all_items_for_ai(current_user, user_id: int, year_a: int, year_b: i
     summary = {}
     last_pagination = {}
 
-    MAX_PAGES = 80        # 8.000 itens
+    MAX_PAGES = 80
     MAX_ITEMS = 8000
 
     while True:
@@ -225,16 +229,17 @@ def _collect_all_items_for_ai(current_user, user_id: int, year_a: int, year_b: i
 
 
 # =========================
-# GERAR INSIGHTS (NOVO)
+# GERAR INSIGHTS
 # =========================
 def get_ticket_medio_insights(current_user=None):
     """
-    GET /ticket-medio/insights?user_id=10&year=2025
+    GET /ticket-medio/insights?user_id=<hash>&year=2025
     """
-    user_id = request.args.get("user_id", type=int)
+    user_id = request.args.get("user_id")
     year = request.args.get("year", type=int)
 
-    if not user_id or user_id <= 0:
+    user_id = str(user_id).strip() if user_id is not None else ""
+    if not user_id:
         return jsonify({"error": "Missing or invalid user_id"}), 400
 
     if not year or year <= 1900:
@@ -247,7 +252,6 @@ def get_ticket_medio_insights(current_user=None):
     date_from = request.args.get("date_from")
     date_to = request.args.get("date_to")
 
-    # -------- coleta dados ----------
     try:
         all_items, summary, pagination, err_resp, err_status = _collect_all_items_for_ai(
             current_user=current_user,
@@ -285,12 +289,10 @@ def get_ticket_medio_insights(current_user=None):
             "db": {"inserted": 0, "ids": [], "batch_id": None},
         }), 200
 
-    # -------- chama IA ----------
     try:
         insights = gerar_insights_ticket_medio(all_items, summary=summary)
     except MistralServiceError as e:
         traceback.print_exc()
-        # upstream (IA), melhor 502
         return jsonify({
             "error": "ai_upstream_error",
             "details": str(e),
@@ -304,7 +306,6 @@ def get_ticket_medio_insights(current_user=None):
             "where": "gerar_insights_ticket_medio",
         }), 500
 
-    # -------- valida tipo ----------
     if not isinstance(insights, dict):
         return jsonify({
             "error": "invalid_ai_response",
@@ -315,7 +316,6 @@ def get_ticket_medio_insights(current_user=None):
     if not isinstance(analises, list):
         analises = []
 
-    # -------- normaliza (protegido) ----------
     try:
         analises_norm = []
         for a in analises:
@@ -331,7 +331,6 @@ def get_ticket_medio_insights(current_user=None):
             "sample": analises[0] if analises else None,
         }), 500
 
-    # meta de auditoria
     meta = {
         "filters": {"q": q, "date_from": date_from, "date_to": date_to},
         "limits": {"max_items": 8000, "max_pages": 80},
@@ -342,7 +341,6 @@ def get_ticket_medio_insights(current_user=None):
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    # -------- salva DB ----------
     db_result = _save_analises_to_db(
         user_id=user_id,
         analises=analises_norm,
@@ -352,7 +350,6 @@ def get_ticket_medio_insights(current_user=None):
         meta=meta,
     )
 
-    # ✅ aqui estava seu “bug”: DB pode falhar e você retornava 200 mesmo assim
     if isinstance(db_result, dict) and db_result.get("error"):
         return jsonify({
             "error": db_result.get("error"),
@@ -368,20 +365,20 @@ def get_ticket_medio_insights(current_user=None):
         "analises": analises_norm,
         "db": db_result,
     }), 200
+
+
 # =========================
 # LISTAR ÚLTIMO LOTE SALVO
 # =========================
 def get_ticket_medio_insights_saved_latest(current_user=None):
     """
-    GET /ticket-medio/insights/saved/latest?user_id=10&year=2025
-
-    - Se year vier, pega o último batch daquele ano
-    - Se year não vier, pega o último batch geral
+    GET /ticket-medio/insights/saved/latest?user_id=<hash>&year=2025
     """
-    user_id = request.args.get("user_id", type=int)
+    user_id = request.args.get("user_id")
     year = request.args.get("year", type=int)
 
-    if not user_id or user_id <= 0:
+    user_id = str(user_id).strip() if user_id is not None else ""
+    if not user_id:
         return jsonify({"error": "Missing or invalid user_id"}), 400
 
     conn = None
@@ -458,7 +455,6 @@ def get_ticket_medio_insights_saved_latest(current_user=None):
         summary_out = {}
 
         for r in rows:
-            # meta e summary repetem em todas as linhas do batch; pega o primeiro
             meta_out = r[12] if r[12] is not None else meta_out
 
             summary_out = {

@@ -38,12 +38,12 @@ def token_required(fn):
 @toon_insights_routes.get("/toon/insights")
 @token_required
 def route_get_toon_insights(current_user):
-    user_id = request.args.get("user_id", type=int)
-    if not user_id or user_id <= 0:
+    user_id = request.args.get("user_id")
+    if not user_id or not str(user_id).strip():
         return jsonify(
             {
                 "error": "Missing or invalid user_id",
-                "details": "Envie o id do cliente via querystring. Ex: /toon/insights?user_id=10",
+                "details": "Envie o id do cliente via querystring. Ex: /toon/insights?user_id=<hash>",
             }
         ), 400
 
@@ -51,17 +51,17 @@ def route_get_toon_insights(current_user):
 
 
 # =========================
-# NEW ROUTE: consultar dados já salvos (lote mais recente)
+# consultar dados já salvos (lote mais recente)
 # =========================
 @toon_insights_routes.get("/toon/insights/saved/latest")
 @token_required
 def route_get_toon_insights_saved_latest(current_user):
-    user_id = request.args.get("user_id", type=int)
-    if not user_id or user_id <= 0:
+    user_id = request.args.get("user_id")
+    if not user_id or not str(user_id).strip():
         return jsonify(
             {
                 "error": "Missing or invalid user_id",
-                "details": "Envie o id do cliente via querystring. Ex: /toon/insights/saved/latest?user_id=10",
+                "details": "Envie o id do cliente via querystring. Ex: /toon/insights/saved/latest?user_id=<hash>",
             }
         ), 400
 

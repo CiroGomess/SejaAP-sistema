@@ -3,6 +3,7 @@ from flask import request, jsonify
 from config.db import get_connection
 from math import ceil
 from datetime import datetime
+from utils.helpers import generate_secure_id
 
 
 FIELDS = {
@@ -76,7 +77,6 @@ def create_analise_margem(current_user=None):
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
     payload = {k: data.get(k) for k in FIELDS if k in data}
-
     _try_calc_margem_bruta(payload)
 
     conn = None
@@ -85,15 +85,13 @@ def create_analise_margem(current_user=None):
         cur = conn.cursor()
 
         if not _customer_id_exists(cur, payload["user_id"]):
-            return jsonify(
-                {
-                    "error": "Invalid user_id",
-                    "details": "user_id must exist in public.clientes.id",
-                }
-            ), 400
+            return jsonify({"error": "Invalid user_id"}), 400
 
-        columns = list(payload.keys())
-        values = [payload[c] for c in columns]
+        # --- GERAÇÃO DO ID SEGURO ---
+        novo_id = generate_secure_id()
+        
+        columns = ["id"] + list(payload.keys())
+        values = [novo_id] + [payload[c] for c in payload.keys()]
         placeholders = ", ".join(["%s"] * len(columns))
 
         sql = f"""
@@ -108,31 +106,25 @@ def create_analise_margem(current_user=None):
         r = cur.fetchone()
         conn.commit()
 
-        return jsonify(
-            {
-                "message": "Análise de margem criada",
-                "analise_margem": {
-                    "id": r[0],
-                    "user_id": r[1],
-                    "produto_ou_servico": r[2],
-                    "custo": str(r[3]) if r[3] is not None else None,
-                    "hora_homem": str(r[4]) if r[4] is not None else None,
-                    "imposto": str(r[5]) if r[5] is not None else None,
-                    "margem_bruta": str(r[6]) if r[6] is not None else None,
-                    "comissao": str(r[7]) if r[7] is not None else None,
-                    "frete": str(r[8]) if r[8] is not None else None,
-                },
-            }
-        ), 201
-
+        return jsonify({
+            "message": "Análise de margem criada",
+            "analise_margem": {
+                "id": r[0], # Retornará a string de 128 caracteres
+                "user_id": r[1],
+                "produto_ou_servico": r[2],
+                "custo": str(r[3]) if r[3] is not None else None,
+                "hora_homem": str(r[4]) if r[4] is not None else None,
+                "imposto": str(r[5]) if r[5] is not None else None,
+                "margem_bruta": str(r[6]) if r[6] is not None else None,
+                "comissao": str(r[7]) if r[7] is not None else None,
+                "frete": str(r[8]) if r[8] is not None else None,
+            },
+        }), 201
     except Exception as e:
-        if conn:
-            conn.rollback()
+        if conn: conn.rollback()
         return jsonify({"error": "create failed", "details": str(e)}), 500
     finally:
-        if conn:
-            conn.close()
-
+        if conn: conn.close()
 
 # =========================
 # LIST
@@ -226,7 +218,7 @@ def list_analises_margem(
 # =========================
 # GET
 # =========================
-def get_analise_margem(current_user=None, margem_id: int = 0):
+def get_analise_margem(current_user=None, margem_id: str = ""):
     conn = None
     try:
         conn = get_connection()
@@ -248,33 +240,29 @@ def get_analise_margem(current_user=None, margem_id: int = 0):
         if not r:
             return jsonify({"error": "Registro não encontrado"}), 404
 
-        return jsonify(
-            {
-                "analise_margem": {
-                    "id": r[0],
-                    "user_id": r[1],
-                    "produto_ou_servico": r[2],
-                    "custo": str(r[3]) if r[3] else None,
-                    "hora_homem": str(r[4]) if r[4] else None,
-                    "imposto": str(r[5]) if r[5] else None,
-                    "margem_bruta": str(r[6]) if r[6] else None,
-                    "comissao": str(r[7]) if r[7] else None,
-                    "frete": str(r[8]) if r[8] else None,
-                }
+        return jsonify({
+            "analise_margem": {
+                "id": r[0],
+                "user_id": r[1],
+                "produto_ou_servico": r[2],
+                "custo": str(r[3]) if r[3] else None,
+                "hora_homem": str(r[4]) if r[4] else None,
+                "imposto": str(r[5]) if r[5] else None,
+                "margem_bruta": str(r[6]) if r[6] else None,
+                "comissao": str(r[7]) if r[7] else None,
+                "frete": str(r[8]) if r[8] else None,
             }
-        ), 200
-
+        }), 200
     except Exception as e:
         return jsonify({"error": "get failed", "details": str(e)}), 500
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
 
 # =========================
 # UPDATE
 # =========================
-def update_analise_margem(current_user=None, margem_id: int = 0):
+def update_analise_margem(current_user=None, margem_id: str = ""):
     data = request.get_json(silent=True) or {}
     payload = {k: data[k] for k in data.keys() if k in FIELDS}
 
@@ -286,20 +274,10 @@ def update_analise_margem(current_user=None, margem_id: int = 0):
         conn = get_connection()
         cur = conn.cursor()
 
-        if "user_id" in payload:
-            if not _customer_id_exists(cur, payload["user_id"]):
-                return jsonify(
-                    {
-                        "error": "Invalid user_id",
-                        "details": "user_id must exist in public.clientes.id",
-                    }
-                ), 400
-
         _try_calc_margem_bruta(payload)
 
         set_parts = []
         values = []
-
         for k, v in payload.items():
             set_parts.append(f"{k} = %s")
             values.append(v)
@@ -307,54 +285,42 @@ def update_analise_margem(current_user=None, margem_id: int = 0):
         values.append(margem_id)
 
         cur.execute(
-            f"""
-            UPDATE public.analise_margem
-            SET {", ".join(set_parts)}
-            WHERE id = %s;
-            """,
+            f"UPDATE public.analise_margem SET {', '.join(set_parts)} WHERE id = %s;",
             tuple(values),
         )
 
         if cur.rowcount == 0:
-            conn.rollback()
             return jsonify({"error": "Registro não encontrado"}), 404
 
         conn.commit()
         return jsonify({"message": "Análise de margem atualizada"}), 200
-
     except Exception as e:
-        if conn:
-            conn.rollback()
+        if conn: conn.rollback()
         return jsonify({"error": "update failed", "details": str(e)}), 500
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
 
 # =========================
 # DELETE
 # =========================
-def delete_analise_margem(current_user=None, margem_id: int = 0):
+def delete_analise_margem(current_user=None, margem_id: str = ""):
     conn = None
     try:
         conn = get_connection()
         cur = conn.cursor()
-
         cur.execute("DELETE FROM public.analise_margem WHERE id = %s;", (margem_id,))
+        
         if cur.rowcount == 0:
-            conn.rollback()
             return jsonify({"error": "Registro não encontrado"}), 404
 
         conn.commit()
         return jsonify({"message": "Análise de margem removida"}), 200
-
     except Exception as e:
-        if conn:
-            conn.rollback()
+        if conn: conn.rollback()
         return jsonify({"error": "delete failed", "details": str(e)}), 500
     finally:
-        if conn:
-            conn.close()
+        if conn: conn.close()
 
 
 def dashboard_analise_margem(

@@ -32,9 +32,9 @@ def token_required(fn):
     return wrapper
 
 
-@lt_clientes_routes.get("/lt-clientes/<int:user_id>")
+@lt_clientes_routes.get("/lt-clientes/<string:user_id>")
 @token_required
 def route_list_lt_clientes(current_user, user_id):
-    # paginação vem por querystring e será lida no controller:
+    # paginação vem por querystring:
     # /lt-clientes/<user_id>?page=1&per_page=100
     return list_lt_clientes(current_user=current_user, user_id=user_id)

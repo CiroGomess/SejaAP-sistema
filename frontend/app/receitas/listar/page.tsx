@@ -32,7 +32,6 @@ import {
   alpha,
   Fade,
   Tooltip,
-  Badge,
   Container,
   Grid,
 } from '@mui/material';
@@ -44,17 +43,14 @@ import {
   Delete as DeleteIcon,
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
-  TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
   CalendarMonth as CalendarMonthIcon,
-  MonetizationOn as MonetizationOnIcon,
   ReceiptLong as ReceiptIcon,
   Person as PersonIcon,
   Business as BusinessIcon,
   Inventory as InventoryIcon,
   AttachMoney as AttachMoneyIcon,
   Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
+
 } from '@mui/icons-material';
 
 import AppAlert, { AlertType } from '../../../components/AppAlert';
@@ -84,8 +80,8 @@ const STATUS_COLORS = {
 const STORAGE_KEY = 'selectedClient';
 
 type Receita = {
-  id: number;
-  user_id: number;
+  id: string;
+  user_id: string;
   numero_orcamento: string | null;
   nome_cliente: string | null;
   data_emissao: string | null;
@@ -102,8 +98,9 @@ type Receita = {
 
 type ProdutoOuServico = 'PRODUTO' | 'SERVICO';
 
+
 type ReceitaForm = {
-  user_id: number;
+  user_id: string;
   numero_orcamento: string;
   nome_cliente: string;
   data_emissao: string;
@@ -136,10 +133,11 @@ type Stats = {
 };
 
 type SelectedClient = {
-  id: number;
+  id: string;
   code: string;
   name: string;
 };
+
 
 function pickApiError(data: any): string {
   if (!data) return 'Erro inesperado.';
@@ -187,15 +185,15 @@ const inputSx = {
     backgroundColor: WHITE,
     borderRadius: 2,
     transition: 'all 0.2s ease',
-    '& fieldset': { 
+    '& fieldset': {
       borderColor: BORDER_LIGHT,
       borderWidth: '1.5px',
     },
-    '&:hover fieldset': { 
+    '&:hover fieldset': {
       borderColor: GRAY_MAIN,
     },
     '&.Mui-focused': {
-      '& fieldset': { 
+      '& fieldset': {
         borderColor: GOLD_PRIMARY,
         borderWidth: '2px',
       },
@@ -210,11 +208,11 @@ const inputSx = {
       padding: '12px 14px',
     },
   },
-  '& .MuiInputLabel-root': { 
-    color: GRAY_MAIN, 
+  '& .MuiInputLabel-root': {
+    color: GRAY_MAIN,
     fontWeight: 500,
     fontSize: '0.9rem',
-    '&.Mui-focused': { 
+    '&.Mui-focused': {
       color: GOLD_PRIMARY,
       fontWeight: 600,
     },
@@ -236,7 +234,7 @@ function getSelectedClientFromStorage(): SelectedClient | null {
     const parsed = JSON.parse(raw);
     if (parsed?.id && parsed?.code && parsed?.name) {
       return {
-        id: Number(parsed.id),
+        id: String(parsed.id),
         code: String(parsed.code),
         name: String(parsed.name),
       };
@@ -275,7 +273,7 @@ function ReceitasListarPage() {
   const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState<ReceitaForm>({
-    user_id: 0,
+    user_id: '',
     numero_orcamento: '',
     nome_cliente: '',
     data_emissao: '',
@@ -308,8 +306,9 @@ function ReceitasListarPage() {
       return;
     }
 
-    const userId = Number(client.id);
-    if (!Number.isFinite(userId) || userId <= 0) {
+    const userId = String(client.id).trim();
+
+    if (!userId) {
       setRows([]);
       setPagination(null);
       setStats(null);
@@ -322,12 +321,14 @@ function ReceitasListarPage() {
     setLastUpdated(new Date().toLocaleString());
 
     const qs = new URLSearchParams({
-      user_id: String(userId),
+      user_id: userId,
       page: String(page),
       per_page: String(perPage),
     }).toString();
 
     const res = await services(`/receitas?${qs}`, { method: 'GET' });
+
+    console.log('API response:', res);
 
     if (!res.success) {
       showAlert(pickApiError(res.data), 'error');
@@ -435,7 +436,7 @@ function ReceitasListarPage() {
   const openEdit = (r: Receita) => {
     setEditing(r);
     setForm({
-      user_id: Number(r.user_id || 0),
+      user_id: String(r.user_id || ''),
       numero_orcamento: r.numero_orcamento ?? '',
       nome_cliente: r.nome_cliente ?? '',
       data_emissao: toISODate(r.data_emissao),
@@ -561,8 +562,8 @@ function ReceitasListarPage() {
   // UI quando não há cliente selecionado
   if (!selectedClient) {
     return (
-      <Box sx={{ 
-        minHeight: '100vh', 
+      <Box sx={{
+        minHeight: '100vh',
         bgcolor: GRAY_EXTRA_LIGHT,
         display: 'flex',
         alignItems: 'center',
@@ -583,7 +584,7 @@ function ReceitasListarPage() {
             }}
           >
             <Box sx={{ height: 6, background: `linear-gradient(90deg, ${GOLD_PRIMARY}, ${GOLD_LIGHT})` }} />
-            
+
             <CardContent sx={{ p: 4, textAlign: 'center' }}>
               <Avatar
                 sx={{
@@ -601,7 +602,7 @@ function ReceitasListarPage() {
               <Typography variant="h4" sx={{ fontWeight: 700, color: TEXT_DARK, mb: 1 }}>
                 Nenhum cliente selecionado
               </Typography>
-              
+
               <Typography sx={{ color: GRAY_MAIN, mb: 4, maxWidth: 360, mx: 'auto' }}>
                 Para visualizar as receitas, primeiro selecione um cliente no menu lateral.
               </Typography>
@@ -686,12 +687,13 @@ function ReceitasListarPage() {
         {selectedClient?.id && (
           <Fade in timeout={600}>
             <Box sx={{ mb: 4 }}>
+              
               <ReceitaEvolutivaChart userId={selectedClient.id} />
             </Box>
           </Fade>
         )}
 
-       
+
 
         {/* Tabela de Receitas */}
         <Fade in timeout={800}>

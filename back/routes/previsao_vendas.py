@@ -45,23 +45,23 @@ def route_create(current_user):
 @previsao_vendas_routes.get("/previsao-vendas")
 @token_required
 def route_list(current_user):
-    user_id = request.args.get("user_id", type=int)
+    user_id = request.args.get("user_id")
     return list_previsao_vendas(current_user, user_id)
 
 
-@previsao_vendas_routes.get("/previsao-vendas/<int:venda_id>")
+@previsao_vendas_routes.get("/previsao-vendas/<string:venda_id>")
 @token_required
 def route_get(current_user, venda_id):
     return get_previsao_venda(current_user, venda_id)
 
 
-@previsao_vendas_routes.put("/previsao-vendas/<int:venda_id>")
+@previsao_vendas_routes.put("/previsao-vendas/<string:venda_id>")
 @token_required
 def route_update(current_user, venda_id):
     return update_previsao_venda(current_user, venda_id)
 
 
-@previsao_vendas_routes.delete("/previsao-vendas/<int:venda_id>")
+@previsao_vendas_routes.delete("/previsao-vendas/<string:venda_id>")
 @token_required
 def route_delete(current_user, venda_id):
     return delete_previsao_venda(current_user, venda_id)

@@ -1,5 +1,5 @@
 export type SelectedClient = {
-  id: number;
+  id: string;
   code: string;
   name: string;
 };
@@ -16,7 +16,7 @@ export type UploadResult = {
 
 // Tipos para listagem
 export type ContabilidadeData = {
-  id: number;
+  id: string;
   ano: number;
   descricao: string;
   valor: number;

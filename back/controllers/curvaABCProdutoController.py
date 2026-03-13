@@ -1,5 +1,3 @@
-# curvaABCProdutoController.py
-
 from flask import request, jsonify
 from config.db import get_connection
 from math import ceil
@@ -11,7 +9,7 @@ from datetime import datetime
 # HELPERS
 # ==============================================================================
 
-def _customer_id_exists(cur, customer_id: int) -> bool:
+def _customer_id_exists(cur, customer_id: str) -> bool:
     cur.execute(
         """
         SELECT 1
@@ -49,7 +47,6 @@ def _fmt_money(d: Decimal) -> str:
 
 
 def _fmt_qty(d: Decimal) -> str:
-    # quantidade é numeric(14,3) no seu exemplo
     return str(d.quantize(Decimal("0.001")))
 
 
@@ -62,7 +59,7 @@ def _fmt_pct(d: Decimal) -> str:
 # ==============================================================================
 def list_curva_abc_produtos(
     current_user=None,
-    user_id: int | None = None,
+    user_id: str | None = None,
     page: int = 1,
     per_page: int = 10,
     date_from: str | None = None,
@@ -72,12 +69,12 @@ def list_curva_abc_produtos(
     b_limit: float = 0.95,
     year_a: int = 2024,
     year_b: int = 2025,
-    tipo: str = "cliente",  # 🔥 NOVO (default mantém comportamento antigo)
+    tipo: str = "cliente",
 ):
     """
     Curva ABC com comparação anual.
-    - tipo=cliente → comportamento ORIGINAL (produto + cliente)
-    - tipo=produto → AGRUPA apenas por produto (SEM duplicar)
+    - tipo=cliente -> comportamento ORIGINAL (produto + cliente)
+    - tipo=produto -> AGRUPA apenas por produto (SEM duplicar)
     """
 
     allowed_per_page = {10, 50, 100}
@@ -89,7 +86,8 @@ def list_curva_abc_produtos(
 
     offset = (page - 1) * per_page
 
-    if not user_id or user_id <= 0:
+    user_id = str(user_id).strip() if user_id is not None else ""
+    if not user_id:
         return jsonify({"error": "Missing or invalid user_id"}), 400
 
     tipo = (tipo or "cliente").lower()
@@ -148,7 +146,7 @@ def list_curva_abc_produtos(
         where_sql = " WHERE " + " AND ".join(where_parts)
 
         # -----------------------------
-        # 🔥 GROUP BY DINÂMICO (ÚNICA DIFERENÇA)
+        # GROUP BY DINAMICO
         # -----------------------------
         if tipo == "produto":
             group_fields = "produto_ou_servico, nome_produto_ou_servico"
@@ -177,7 +175,7 @@ def list_curva_abc_produtos(
         total_pages = ceil(total_items / per_page) if total_items else 0
 
         # -----------------------------
-        # QUERY PRINCIPAL (100% PRESERVADA)
+        # QUERY PRINCIPAL
         # -----------------------------
         cur.execute(
             f"""
@@ -221,7 +219,27 @@ def list_curva_abc_produtos(
         rows = cur.fetchall()
 
         if not rows:
-            return jsonify({"items": [], "pagination": {}, "summary": {}}), 200
+            return jsonify(
+                {
+                    "items": [],
+                    "pagination": {
+                        "page": page,
+                        "per_page": per_page,
+                        "items_on_page": 0,
+                        "total_items": total_items,
+                        "total_pages": total_pages,
+                    },
+                    "summary": {
+                        "user_id": user_id,
+                        "tipo": tipo,
+                        "year_a": year_a,
+                        "year_b": year_b,
+                        "total_valor": "0.00",
+                        "a_limit": str(a_limit_dec),
+                        "b_limit": str(b_limit_dec),
+                    },
+                }
+            ), 200
 
         total_geral_dec = _dec(rows[0][-2])
 
@@ -253,17 +271,14 @@ def list_curva_abc_produtos(
                     "rank": int(r[0]),
                     "produto_ou_servico": r[1],
                     "nome_produto_ou_servico": r[2],
-                    "nome_cliente": r[3],  # 🔒 SEMPRE PRESENTE
-
+                    "nome_cliente": r[3],
                     "total_valor": _fmt_money(total_valor_dec),
                     "pct": _fmt_pct(pct * 100),
                     "pct_acumulado": _fmt_pct(pct_acum * 100),
                     "classe": _classifica_abc(pct_acum, a_limit_dec, b_limit_dec),
-
                     f"qtd_{year_a}": _fmt_qty(qtd_a_d),
                     f"qtd_{year_b}": _fmt_qty(qtd_b_d),
                     "delta_qtd": _fmt_qty(delta_qtd),
-
                     f"ticket_{year_a}": _fmt_money(ticket_a),
                     f"ticket_{year_b}": _fmt_money(ticket_b),
                     "delta_ticket_pct": _fmt_pct(delta_ticket_pct) if delta_ticket_pct is not None else None,
@@ -299,11 +314,12 @@ def list_curva_abc_produtos(
             conn.close()
 
 
-def get_curva_abc_summary(current_user=None, user_id: int | None = None, year: int | None = None):
-    if not user_id or user_id <= 0:
+def get_curva_abc_summary(current_user=None, user_id: str | None = None, year: int | None = None):
+    user_id = str(user_id).strip() if user_id is not None else ""
+
+    if not user_id:
         return jsonify({"error": "Missing or invalid user_id"}), 400
 
-    # Se não passar ano, assume o ano atual
     if not year:
         year = datetime.now().year
 
@@ -312,58 +328,68 @@ def get_curva_abc_summary(current_user=None, user_id: int | None = None, year: i
         conn = get_connection()
         cur = conn.cursor()
 
-        # 1. Buscar todos os anos disponíveis para o filtro do front
-        cur.execute("""
+        if not _customer_id_exists(cur, user_id):
+            return jsonify(
+                {"error": "Invalid user_id", "details": "user_id must exist in clientes"}
+            ), 400
+
+        # 1. Buscar anos disponíveis
+        cur.execute(
+            """
             SELECT DISTINCT EXTRACT(YEAR FROM data_emissao)::int as ano
             FROM public.receita_user
             WHERE user_id = %s
             ORDER BY ano DESC
-        """, (user_id,))
-        available_years = [row[0] for row in cur.fetchall()]
+            """,
+            (user_id,),
+        )
+        available_years = [row[0] for row in cur.fetchall() if row[0] is not None]
 
-        # 2. Query Principal com a lógica de ordenação correta para Curva ABC
-        cur.execute(f"""
+        # 2. Query principal
+        cur.execute(
+            """
             WITH faturamento_por_produto AS (
-                SELECT 
+                SELECT
                     nome_produto_ou_servico,
                     SUM(valor_total) as total_prod
                 FROM public.receita_user
-                WHERE user_id = %s 
+                WHERE user_id = %s
                   AND EXTRACT(YEAR FROM data_emissao) = %s
                 GROUP BY nome_produto_ou_servico
             ),
             calculo_curva AS (
-                SELECT 
+                SELECT
                     total_prod,
                     SUM(total_prod) OVER() as total_geral,
-                    -- IMPORTANTE: Ordenar DESC para que os maiores valores acumulem primeiro (Classe A)
                     SUM(total_prod) OVER(
-                        ORDER BY total_prod DESC 
+                        ORDER BY total_prod DESC
                         ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
                     ) / NULLIF(SUM(total_prod) OVER(), 0) as pct_acumulado
                 FROM faturamento_por_produto
             ),
             classificacao AS (
-                SELECT 
+                SELECT
                     total_prod,
                     total_geral,
-                    CASE 
+                    CASE
                         WHEN pct_acumulado <= 0.80 THEN 'A'
                         WHEN pct_acumulado <= 0.95 THEN 'B'
                         ELSE 'C'
                     END as classe
                 FROM calculo_curva
             )
-            SELECT 
+            SELECT
                 COALESCE(MAX(total_geral), 0) as faturamento_total,
                 COUNT(CASE WHEN classe = 'A' THEN 1 END) as qtd_a,
                 COUNT(CASE WHEN classe = 'B' THEN 1 END) as qtd_b,
                 COUNT(CASE WHEN classe = 'C' THEN 1 END) as qtd_c
             FROM classificacao
-        """, (user_id, year))
+            """,
+            (user_id, year),
+        )
 
         row = cur.fetchone()
-        
+
         if row and row[0] > 0:
             resumo = {
                 "faturamento_total": _fmt_money(_dec(row[0])),
@@ -379,11 +405,13 @@ def get_curva_abc_summary(current_user=None, user_id: int | None = None, year: i
                 "qtd_produtos_c": 0,
             }
 
-        return jsonify({
-            "available_years": available_years,
-            "selected_year": year,
-            "summary": resumo
-        }), 200
+        return jsonify(
+            {
+                "available_years": available_years,
+                "selected_year": year,
+                "summary": resumo,
+            }
+        ), 200
 
     except Exception as e:
         return jsonify({"error": "Summary failed", "details": str(e)}), 500

@@ -9,6 +9,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", "change-me")
 
 receitas_import_routes = Blueprint("receitas_import_routes", __name__)
 
+
 def token_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):

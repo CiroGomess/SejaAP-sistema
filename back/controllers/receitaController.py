@@ -5,11 +5,12 @@ from flask import request, jsonify
 from config.db import get_connection
 from math import ceil
 from datetime import datetime
+from utils.helpers import generate_secure_id
 
 
 # Campos aceitos pelo INSERT/UPDATE via API
 FIELDS = {
-    "user_id",  # BIGINT -> clientes.id
+    "user_id",
     "numero_orcamento",
     "nome_cliente",
     "data_emissao",
@@ -25,7 +26,7 @@ FIELDS = {
 }
 
 
-def _customer_id_exists(cur, customer_id: int) -> bool:
+def _customer_id_exists(cur, customer_id: str) -> bool:
     cur.execute(
         """
         SELECT 1
@@ -57,6 +58,7 @@ def _try_calc_valor_total(payload: dict) -> None:
     except (InvalidOperation, ValueError, TypeError):
         pass
 
+
 # =========================
 # CREATE
 # =========================
@@ -69,6 +71,10 @@ def create_receita(current_user=None):
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
     payload = {k: data.get(k) for k in FIELDS if k in data}
+
+    payload["user_id"] = str(payload["user_id"]).strip()
+    if not payload["user_id"]:
+        return jsonify({"error": "Invalid user_id"}), 400
 
     _try_calc_valor_total(payload)
 
@@ -85,8 +91,10 @@ def create_receita(current_user=None):
                 }
             ), 400
 
-        columns = list(payload.keys())
-        values = [payload[c] for c in columns]
+        novo_id = generate_secure_id()
+
+        columns = ["id"] + list(payload.keys())
+        values = [novo_id] + [payload[c] for c in payload.keys()]
         placeholders = ", ".join(["%s"] * len(columns))
 
         sql = f"""
@@ -140,7 +148,7 @@ def create_receita(current_user=None):
 # =========================
 def list_receitas(
     current_user=None,
-    user_id: int | None = None,
+    user_id: str | None = None,
     page: int = 1,
     per_page: int = 10,
 ):
@@ -161,13 +169,11 @@ def list_receitas(
         where_sql = ""
         params_where = []
 
-        if user_id is not None:
+        if user_id is not None and str(user_id).strip():
             where_sql = " WHERE user_id = %s"
-            params_where.append(user_id)
+            params_where.append(str(user_id).strip())
 
-        # -------------------------
-        # TOTAL de registros (para total_pages)
-        # -------------------------
+        # TOTAL de registros
         cur.execute(
             f"SELECT COUNT(*) FROM public.receita_user{where_sql};",
             tuple(params_where),
@@ -180,10 +186,7 @@ def list_receitas(
             "mes_menor_faturamento": None,
         }
 
-        # Só calcula se tiver registros
         if total_items > 0:
-            # Um query só para pegar maior e menor
-            # (gera totais por mês, ordena e pega 1 topo e 1 fundo)
             cur.execute(
                 f"""
                 WITH mensal AS (
@@ -212,17 +215,15 @@ def list_receitas(
             )
             row_stats = cur.fetchone()
             if row_stats:
-                maior = row_stats[0]  # pode vir dict dependendo do driver
+                maior = row_stats[0]
                 menor = row_stats[1]
 
-                # Normaliza para dict puro
                 if isinstance(maior, dict):
                     stats["mes_maior_faturamento"] = {
                         "mes": maior.get("mes"),
                         "faturamento": float(maior.get("faturamento") or 0),
                     }
                 elif maior is not None:
-                    # fallback: tenta acessar por chave/índice
                     try:
                         stats["mes_maior_faturamento"] = {
                             "mes": maior["mes"],
@@ -245,10 +246,6 @@ def list_receitas(
                     except Exception:
                         stats["mes_menor_faturamento"] = None
 
-        # -------------------------
-        # Se a página solicitada passar do total_pages -> retorna vazio
-        # mas mantém stats
-        # -------------------------
         if total_pages > 0 and page > total_pages:
             return jsonify(
                 {
@@ -260,13 +257,10 @@ def list_receitas(
                         "total_items": total_items,
                         "total_pages": total_pages,
                     },
-                    "stats": stats,  # ✅ NOVO
+                    "stats": stats,
                 }
             ), 200
 
-        # -------------------------
-        # LISTA paginada
-        # -------------------------
         sql = f"""
             SELECT
                 id, user_id, numero_orcamento, nome_cliente,
@@ -315,7 +309,7 @@ def list_receitas(
                     "total_items": total_items,
                     "total_pages": total_pages,
                 },
-                "stats": stats,  # ✅ NOVO
+                "stats": stats,
             }
         ), 200
 
@@ -325,10 +319,11 @@ def list_receitas(
         if conn:
             conn.close()
 
+
 # =========================
 # GET BY ID
 # =========================
-def get_receita(current_user=None, receita_id: int = 0):
+def get_receita(current_user=None, receita_id: str = ""):
     conn = None
     try:
         conn = get_connection()
@@ -384,7 +379,7 @@ def get_receita(current_user=None, receita_id: int = 0):
 # =========================
 # UPDATE
 # =========================
-def update_receita(current_user=None, receita_id: int = 0):
+def update_receita(current_user=None, receita_id: str = ""):
     data = request.get_json(silent=True) or {}
     payload = {k: data[k] for k in data.keys() if k in FIELDS}
 
@@ -397,6 +392,10 @@ def update_receita(current_user=None, receita_id: int = 0):
         cur = conn.cursor()
 
         if "user_id" in payload:
+            payload["user_id"] = str(payload["user_id"]).strip()
+            if not payload["user_id"]:
+                return jsonify({"error": "Invalid user_id"}), 400
+
             if not _customer_id_exists(cur, payload["user_id"]):
                 return jsonify(
                     {
@@ -466,7 +465,7 @@ def update_receita(current_user=None, receita_id: int = 0):
 # =========================
 # DELETE
 # =========================
-def delete_receita(current_user=None, receita_id: int = 0):
+def delete_receita(current_user=None, receita_id: str = ""):
     conn = None
     try:
         conn = get_connection()
@@ -489,17 +488,16 @@ def delete_receita(current_user=None, receita_id: int = 0):
             conn.close()
 
 
+def receita_evolutiva(current_user=None, user_id: str = "", ano: int = 0):
+    user_id = str(user_id).strip()
+    if not user_id:
+        return jsonify({"error": "Invalid user_id"}), 400
 
-
-def receita_evolutiva(current_user=None, user_id: int = 0, ano: int = 0):
     conn = None
     try:
         conn = get_connection()
         cur = conn.cursor()
 
-        # -----------------------------------
-        # Receita mensal por ano
-        # -----------------------------------
         cur.execute(
             """
             SELECT
@@ -525,9 +523,6 @@ def receita_evolutiva(current_user=None, user_id: int = 0, ano: int = 0):
                 }
             )
 
-        # -----------------------------------
-        # Destaques (maior e menor mês)
-        # -----------------------------------
         maior_mes = None
         menor_mes = None
 

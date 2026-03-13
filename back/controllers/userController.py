@@ -5,13 +5,15 @@ from flask import request, jsonify
 from passlib.hash import django_pbkdf2_sha256
 
 from config.db import get_connection
+from utils.helpers import generate_secure_id
+
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me")
 JWT_EXPIRES_MINUTES = int(os.getenv("JWT_EXPIRES_MINUTES", "120"))
 
 
 def _row_to_user_dict(row):
-    # ✅ Fallback: se por algum motivo o SELECT não trouxer client_id
+    # Fallback: se por algum motivo o SELECT não trouxer client_id
     # (ou vier com menos colunas), não quebra — retorna None.
     client_id = None
     if row and len(row) > 11:
@@ -29,7 +31,7 @@ def _row_to_user_dict(row):
         "is_staff": row[8],
         "is_active": row[9],
         "date_joined": row[10],
-        "client_id": client_id,  # ✅ sempre existe (None se não tiver)
+        "client_id": client_id,
     }
 
 
@@ -38,7 +40,7 @@ def generate_token(user):
         "id": user["id"],
         "username": user["username"],
         "email": user["email"],
-        "client_id": user.get("client_id"),  # ✅ opcional no token
+        "client_id": user.get("client_id"),
         "exp": datetime.utcnow() + timedelta(minutes=JWT_EXPIRES_MINUTES),
         "iat": datetime.utcnow(),
     }
@@ -59,7 +61,7 @@ def register_user():
     first_name = data["first_name"].strip()
     last_name = data["last_name"].strip()
 
-    # ✅ client_id pode vir ou não (se não vier, salva NULL)
+    # client_id pode vir ou não (se não vier, salva NULL)
     client_id = data.get("client_id")
     if client_id in ("", None):
         client_id = None
@@ -84,15 +86,19 @@ def register_user():
         if cur.fetchone():
             return jsonify({"error": "email already exists"}), 409
 
+        # GERAÇÃO DO ID SEGURO
+        novo_id = generate_secure_id()
+
         cur.execute(
             """
             INSERT INTO auth_user
-                (password, last_login, is_superuser, username, first_name, last_name, email, is_staff, is_active, date_joined, client_id)
+                (id, password, last_login, is_superuser, username, first_name, last_name, email, is_staff, is_active, date_joined, client_id)
             VALUES
-                (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id, username, email, first_name, last_name, client_id;
             """,
             (
+                novo_id,
                 password_hash,
                 None,
                 False,
@@ -119,7 +125,7 @@ def register_user():
                     "email": row[2],
                     "first_name": row[3],
                     "last_name": row[4],
-                    "client_id": row[5],  # ✅ pode ser None
+                    "client_id": row[5],
                 },
             }
         ), 201
@@ -189,8 +195,7 @@ def login_user():
                     "email": user["email"],
                     "first_name": user["first_name"],
                     "last_name": user["last_name"],
-                    "client_id": user.get("client_id"),  # ✅ se não tiver → None
-
+                    "client_id": user.get("client_id"),
                     "is_superuser": bool(user["is_superuser"]),
                     "is_staff": bool(user["is_staff"]),
                     "is_active": bool(user["is_active"]),
@@ -231,7 +236,7 @@ def list_users(current_user):
                     "email": r[2],
                     "first_name": r[3],
                     "last_name": r[4],
-                    "client_id": r[5],  # ✅ pode ser None
+                    "client_id": r[5],
                     "is_active": r[6],
                     "is_staff": r[7],
                     "is_superuser": r[8],
@@ -249,7 +254,7 @@ def list_users(current_user):
             conn.close()
 
 
-def get_user(current_user, user_id):
+def get_user(current_user, user_id: str):
     conn = None
     try:
         conn = get_connection()
@@ -290,8 +295,8 @@ def get_user(current_user, user_id):
                     "email": r[2],
                     "first_name": r[3],
                     "last_name": r[4],
-                    "client_id": r[5],         # pode ser None
-                    "client_code": r[6],       # pode ser None (se client_id null ou sem match)
+                    "client_id": r[5],
+                    "client_code": r[6],
                     "is_active": r[7],
                     "is_staff": r[8],
                     "is_superuser": r[9],
@@ -309,13 +314,19 @@ def get_user(current_user, user_id):
             conn.close()
 
 
-def update_user(current_user, user_id):
+def update_user(current_user, user_id: str):
     data = request.get_json(silent=True) or {}
 
     allowed = {
-        "username", "email", "first_name", "last_name",
-        "is_active", "is_staff", "is_superuser",
-        "password", "client_id"
+        "username",
+        "email",
+        "first_name",
+        "last_name",
+        "is_active",
+        "is_staff",
+        "is_superuser",
+        "password",
+        "client_id",
     }
     payload = {k: data[k] for k in data.keys() if k in allowed}
 
@@ -327,7 +338,7 @@ def update_user(current_user, user_id):
     elif "password" in payload and not payload["password"]:
         payload.pop("password")
 
-    # ✅ client_id pode ser None ou int
+    # client_id pode ser None ou int
     if "client_id" in payload:
         if payload["client_id"] in ("", None):
             payload["client_id"] = None
@@ -350,7 +361,10 @@ def update_user(current_user, user_id):
         conn = get_connection()
         cur = conn.cursor()
 
-        cur.execute(f"UPDATE auth_user SET {', '.join(set_parts)} WHERE id = %s;", tuple(values))
+        cur.execute(
+            f"UPDATE auth_user SET {', '.join(set_parts)} WHERE id = %s;",
+            tuple(values)
+        )
         if cur.rowcount == 0:
             conn.rollback()
             return jsonify({"error": "User not found"}), 404
@@ -367,7 +381,7 @@ def update_user(current_user, user_id):
             conn.close()
 
 
-def delete_user(current_user, user_id):
+def delete_user(current_user, user_id: str):
     conn = None
     try:
         conn = get_connection()

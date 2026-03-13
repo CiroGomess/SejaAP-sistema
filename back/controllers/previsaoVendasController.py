@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 from flask import request, jsonify
 from config.db import get_connection
+from utils.helpers import generate_secure_id
 
 
 FIELDS = {
@@ -13,7 +14,7 @@ FIELDS = {
 }
 
 
-def _customer_id_exists(cur, customer_id: int) -> bool:
+def _customer_id_exists(cur, customer_id: str) -> bool:
     cur.execute(
         """
         SELECT 1
@@ -57,6 +58,10 @@ def create_previsao_venda(current_user=None):
 
     payload = {k: data.get(k) for k in FIELDS if k in data}
 
+    payload["user_id"] = str(payload["user_id"]).strip()
+    if not payload["user_id"]:
+        return jsonify({"error": "Invalid user_id"}), 400
+
     if "status" not in payload:
         payload["status"] = "NAO_FATURADO"
 
@@ -75,8 +80,10 @@ def create_previsao_venda(current_user=None):
                 }
             ), 400
 
-        columns = list(payload.keys())
-        values = [payload[c] for c in columns]
+        novo_id = generate_secure_id()
+
+        columns = ["id"] + list(payload.keys())
+        values = [novo_id] + [payload[c] for c in payload.keys()]
         placeholders = ", ".join(["%s"] * len(columns))
 
         sql = f"""
@@ -98,9 +105,9 @@ def create_previsao_venda(current_user=None):
                     "id": r[0],
                     "user_id": r[1],
                     "produto_ou_servico": r[2],
-                    "quantidade": str(r[3]) if r[3] else None,
-                    "valor_unitario": str(r[4]) if r[4] else None,
-                    "valor_total": str(r[5]) if r[5] else None,
+                    "quantidade": str(r[3]) if r[3] is not None else None,
+                    "valor_unitario": str(r[4]) if r[4] is not None else None,
+                    "valor_total": str(r[5]) if r[5] is not None else None,
                     "status": r[6],
                 },
             }
@@ -118,7 +125,7 @@ def create_previsao_venda(current_user=None):
 # =========================
 # LIST
 # =========================
-def list_previsao_vendas(current_user=None, user_id: int | None = None):
+def list_previsao_vendas(current_user=None, user_id: str | None = None):
     conn = None
     try:
         conn = get_connection()
@@ -134,7 +141,7 @@ def list_previsao_vendas(current_user=None, user_id: int | None = None):
         params = ()
         if user_id:
             sql += " WHERE user_id = %s"
-            params = (user_id,)
+            params = (str(user_id).strip(),)
 
         sql += " ORDER BY id ASC;"
 
@@ -148,9 +155,9 @@ def list_previsao_vendas(current_user=None, user_id: int | None = None):
                     "id": r[0],
                     "user_id": r[1],
                     "produto_ou_servico": r[2],
-                    "quantidade": str(r[3]) if r[3] else None,
-                    "valor_unitario": str(r[4]) if r[4] else None,
-                    "valor_total": str(r[5]) if r[5] else None,
+                    "quantidade": str(r[3]) if r[3] is not None else None,
+                    "valor_unitario": str(r[4]) if r[4] is not None else None,
+                    "valor_total": str(r[5]) if r[5] is not None else None,
                     "status": r[6],
                 }
             )
@@ -167,7 +174,7 @@ def list_previsao_vendas(current_user=None, user_id: int | None = None):
 # =========================
 # GET
 # =========================
-def get_previsao_venda(current_user=None, venda_id: int = 0):
+def get_previsao_venda(current_user=None, venda_id: str = ""):
     conn = None
     try:
         conn = get_connection()
@@ -195,9 +202,9 @@ def get_previsao_venda(current_user=None, venda_id: int = 0):
                     "id": r[0],
                     "user_id": r[1],
                     "produto_ou_servico": r[2],
-                    "quantidade": str(r[3]) if r[3] else None,
-                    "valor_unitario": str(r[4]) if r[4] else None,
-                    "valor_total": str(r[5]) if r[5] else None,
+                    "quantidade": str(r[3]) if r[3] is not None else None,
+                    "valor_unitario": str(r[4]) if r[4] is not None else None,
+                    "valor_total": str(r[5]) if r[5] is not None else None,
                     "status": r[6],
                 }
             }
@@ -213,7 +220,7 @@ def get_previsao_venda(current_user=None, venda_id: int = 0):
 # =========================
 # UPDATE
 # =========================
-def update_previsao_venda(current_user=None, venda_id: int = 0):
+def update_previsao_venda(current_user=None, venda_id: str = ""):
     data = request.get_json(silent=True) or {}
     payload = {k: data[k] for k in data.keys() if k in FIELDS}
 
@@ -226,6 +233,10 @@ def update_previsao_venda(current_user=None, venda_id: int = 0):
         cur = conn.cursor()
 
         if "user_id" in payload:
+            payload["user_id"] = str(payload["user_id"]).strip()
+            if not payload["user_id"]:
+                return jsonify({"error": "Invalid user_id"}), 400
+
             if not _customer_id_exists(cur, payload["user_id"]):
                 return jsonify(
                     {
@@ -300,7 +311,7 @@ def update_previsao_venda(current_user=None, venda_id: int = 0):
 # =========================
 # DELETE
 # =========================
-def delete_previsao_venda(current_user=None, venda_id: int = 0):
+def delete_previsao_venda(current_user=None, venda_id: str = ""):
     conn = None
     try:
         conn = get_connection()

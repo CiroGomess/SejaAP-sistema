@@ -48,16 +48,16 @@ def route_list_customers(current_user):
     return list_customers()
 
 
-@clientes_routes.get("/customers/<string:customer_id>")
+@clientes_routes.get("/customers/<string:code>")
 @token_required
-def route_get_customer(current_user, customer_id):
-    return get_customer(customer_id)
+def route_get_customer(current_user, code):
+    return get_customer(code)
 
 
-@clientes_routes.put("/customers/<string:customer_id>")
+@clientes_routes.put("/customers/<string:code>")
 @token_required
-def route_update_customer(current_user, customer_id):
-    return update_customer(customer_id)
+def route_update_customer(current_user, code):
+    return update_customer(code)
 
 
 @clientes_routes.delete("/customers/<string:code>")

@@ -3,16 +3,16 @@
 from flask import request, jsonify
 from config.db import get_connection
 from psycopg2.extras import Json
-import json
 
 from services.mistral_service import (
     gerar_insights_curva_abc_toon,
     MistralServiceError,
 )
 from controllers.toonController import toon_abc_ano_recente
+from utils.helpers import generate_secure_id
 
 
-def _customer_id_exists(cur, customer_id: int) -> bool:
+def _customer_id_exists(cur, customer_id: str) -> bool:
     cur.execute(
         """
         SELECT 1
@@ -51,7 +51,7 @@ def _normalize_analise_item(item: dict) -> dict:
     }
 
 
-def _save_analises_to_db(user_id: int, analises: list[dict], categoria: str = "produto") -> dict:
+def _save_analises_to_db(user_id: str, analises: list[dict], categoria: str = "produto") -> dict:
     """
     Salva os insights no banco.
     Aceita 'categoria' para diferenciar 'produto' de 'clientes'.
@@ -70,7 +70,7 @@ def _save_analises_to_db(user_id: int, analises: list[dict], categoria: str = "p
                 "details": "user_id must exist in public.clientes.id",
             }
 
-        inserted_ids: list[int] = []
+        inserted_ids: list[str] = []
 
         for item in analises:
             normalized = _normalize_analise_item(item)
@@ -78,23 +78,25 @@ def _save_analises_to_db(user_id: int, analises: list[dict], categoria: str = "p
             if not normalized.get("aspecto_avaliado") or not normalized.get("situacao_identificada"):
                 continue
 
-            # Inserção com a nova coluna 'categoria'
+            novo_id = generate_secure_id()
+
             cur.execute(
                 """
                 INSERT INTO public.analises_ia_user_curva_abc
-                    (user_id, aspecto_avaliado, evidencias, plano_de_acao, riscos_associados, situacao_identificada, categoria)
+                    (id, user_id, aspecto_avaliado, evidencias, plano_de_acao, riscos_associados, situacao_identificada, categoria)
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, %s)
+                    (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
                 """,
                 (
+                    novo_id,
                     user_id,
                     normalized["aspecto_avaliado"],
                     Json(normalized["evidencias"]),
                     Json(normalized["plano_de_acao"]),
                     Json(normalized["riscos_associados"]),
                     normalized["situacao_identificada"],
-                    categoria  # Valor gravado (ex: 'clientes' ou 'produto')
+                    categoria
                 ),
             )
 
@@ -119,12 +121,11 @@ def _save_analises_to_db(user_id: int, analises: list[dict], categoria: str = "p
 # CREATE/REFRESH INSIGHTS (GERAR NOVOS)
 # =========================
 def get_toon_insights(current_user=None):
-    user_id = request.args.get("user_id", type=int)
-    # 1. Captura o tipo (padrão 'produto')
-    # O front deve enviar ?type=clientes para análise de clientes
+    user_id = request.args.get("user_id")
     analysis_type = request.args.get("type", default="produto", type=str)
-    
-    if not user_id or user_id <= 0:
+
+    user_id = str(user_id).strip() if user_id is not None else ""
+    if not user_id:
         return jsonify({"error": "Missing or invalid user_id"}), 400
 
     toon_resp, status = toon_abc_ano_recente(current_user=current_user, user_id=user_id)
@@ -151,8 +152,6 @@ def get_toon_insights(current_user=None):
         )
 
     try:
-        # 2. Passa o analysis_type para o gerador de insights (Mistral Service)
-        # IMPORTANTE: O mistral_service deve esperar a string "clientes" (plural)
         insights = gerar_insights_curva_abc_toon(toon_rows, analysis_type=analysis_type)
     except MistralServiceError as e:
         return jsonify({"error": "mistral_service_error", "details": str(e)}), 500
@@ -163,8 +162,6 @@ def get_toon_insights(current_user=None):
     if not isinstance(analises, list):
         analises = []
 
-    # 3. Salva no banco PASSANDO A CATEGORIA
-    # Vai salvar "clientes" ou "produto" na coluna categoria
     db_result = _save_analises_to_db(user_id=user_id, analises=analises, categoria=analysis_type)
 
     return (
@@ -172,7 +169,7 @@ def get_toon_insights(current_user=None):
             {
                 "user_id": user_id,
                 "ano_base": toon_meta.get("year"),
-                "categoria": analysis_type, # Retorna qual foi a categoria gerada
+                "categoria": analysis_type,
                 "analises": analises,
                 "toon_meta": toon_meta,
                 "db": db_result,
@@ -180,23 +177,22 @@ def get_toon_insights(current_user=None):
         ),
         200,
     )
-    
+
+
 # =========================
 # LISTAR INSIGHTS SALVOS (COM FILTRO DE CATEGORIA)
 # =========================
 def get_toon_insights_saved_latest(current_user=None):
     """
-    GET /toon/insights/saved/latest?user_id=10&type=clientes
-    
+    GET /toon/insights/saved/latest?user_id=<hash>&type=clientes
+
     - Busca o lote mais recente da CATEGORIA solicitada.
     """
-    user_id = request.args.get("user_id", type=int)
-    
-    # 1. CAPTURA O FILTRO (Default 'produto')
-    # Ex: se front mandar ?type=clientes, var será 'clientes'
+    user_id = request.args.get("user_id")
     categoria_filter = request.args.get("type", default="produto", type=str)
 
-    if not user_id or user_id <= 0:
+    user_id = str(user_id).strip() if user_id is not None else ""
+    if not user_id:
         return jsonify({"error": "Missing or invalid user_id"}), 400
 
     conn = None
@@ -204,28 +200,23 @@ def get_toon_insights_saved_latest(current_user=None):
         conn = get_connection()
         cur = conn.cursor()
 
-        # Valida se o user_id existe
         if not _customer_id_exists(cur, user_id):
             return jsonify({"error": "Invalid user_id", "details": "user_id not found"}), 400
 
-        # ------------------------------------------------------------------
-        # ETAPA 1: Pega a data (created_at) mais recente DA CATEGORIA solicitada
-        # ------------------------------------------------------------------
-        # Se categoria_filter for 'clientes', ele ignora qualquer registro 'produto'
+        # ETAPA 1: pega a data mais recente da categoria solicitada
         cur.execute(
             """
             SELECT created_at
             FROM public.analises_ia_user_curva_abc
             WHERE user_id = %s
-              AND categoria = %s 
+              AND categoria = %s
             ORDER BY created_at DESC, id DESC
             LIMIT 1;
             """,
             (user_id, categoria_filter),
         )
         last = cur.fetchone()
-        
-        # Se não achou nada dessa categoria
+
         if not last:
             return (
                 jsonify(
@@ -242,9 +233,7 @@ def get_toon_insights_saved_latest(current_user=None):
 
         created_at_ref = last[0]
 
-        # ------------------------------------------------------------------
-        # ETAPA 2: Buscar os registros com essa Data exata e Categoria
-        # ------------------------------------------------------------------
+        # ETAPA 2: busca os registros com a mesma data e categoria
         cur.execute(
             """
             SELECT
@@ -279,7 +268,7 @@ def get_toon_insights_saved_latest(current_user=None):
                     "riscos_associados": r[5] if r[5] is not None else [],
                     "situacao_identificada": r[6],
                     "created_at": r[7].isoformat() if r[7] else None,
-                    "categoria": r[8]  # Retorna a categoria para o front
+                    "categoria": r[8]
                 }
             )
 

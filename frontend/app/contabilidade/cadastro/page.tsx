@@ -77,7 +77,7 @@ export default function ContabilidadeCadastroPage() {
       const parsed = JSON.parse(raw);
       if (parsed?.id && parsed?.code && parsed?.name) {
         setActiveClient({
-          id: Number(parsed.id),
+          id: parsed.id,
           code: String(parsed.code),
           name: String(parsed.name),
         });
@@ -94,6 +94,7 @@ export default function ContabilidadeCadastroPage() {
       showAlert('Selecione um cliente no menu lateral antes de importar.', 'warning');
       return;
     }
+
     if (!ano) {
       showAlert('Selecione o ano de referência.', 'warning');
       return;
@@ -107,7 +108,6 @@ export default function ContabilidadeCadastroPage() {
     setUploadOpen(true);
     setUploadProgress(0);
 
-    // Simular progresso
     const interval = setInterval(() => {
       setUploadProgress((prev) => {
         if (prev >= 90) {
@@ -121,9 +121,9 @@ export default function ContabilidadeCadastroPage() {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('user_id', String(activeClient.id));
-      fd.append('ano', ano);
-      fd.append('categoria', categoria);
+      fd.append('user_id', String(activeClient.id).trim());
+      fd.append('ano', String(ano).trim());
+      fd.append('categoria', String(categoria).trim());
 
       const res = await services(UPLOAD_ENDPOINT, {
         method: 'POST',
@@ -136,12 +136,12 @@ export default function ContabilidadeCadastroPage() {
       if (!res.success) {
         const msg = pickApiError(res.data) || 'Falha ao importar XLSX.';
         setUploadError(msg);
-        setUploadResult(res.data);
+        setUploadResult(res.data as Record<string, unknown>);
         setUploadState('error');
         return;
       }
 
-      setUploadResult(res.data);
+      setUploadResult(res.data as Record<string, unknown>);
       setUploadState('success');
       showAlert('Dados contábeis importados com sucesso.', 'success');
     } catch (e: any) {

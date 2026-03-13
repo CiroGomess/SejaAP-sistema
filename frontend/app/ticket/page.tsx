@@ -36,11 +36,11 @@ import {
   Fade,
   Badge,
   LinearProgress,
-  CircularProgress 
+  CircularProgress
 } from '@mui/material';
 
 import {
- 
+
   PersonSearch as PersonSearchIcon,
 
   Search as SearchIcon,
@@ -48,7 +48,7 @@ import {
   Timeline as TimelineIcon,
   Refresh as RefreshIcon,
   FilterAlt as FilterAltIcon,
- 
+
   ArrowBack as ArrowBackIcon,
   Verified as VerifiedIcon,
   AttachMoney as AttachMoneyIcon,
@@ -91,7 +91,7 @@ const STATUS_COLORS = {
 const STORAGE_KEY = 'selectedClient';
 
 type SelectedClient = {
-  id: number;
+  id: string;
   code: string;
   name: string;
 };
@@ -116,7 +116,7 @@ type TicketResponse = {
     total_pages: number;
   };
   summary: {
-    user_id: number;
+    user_id: string;
     year_a: number;
     year_b: number;
     date_from: string | null;
@@ -220,9 +220,9 @@ export default function TicketMedioPage() {
       const parsed = JSON.parse(raw);
       if (parsed?.id && parsed?.code && parsed?.name) {
         setActiveClient({
-          id: Number(parsed.id),
-          code: String(parsed.code),
-          name: String(parsed.name),
+          id: String(parsed.id).trim(),
+          code: String(parsed.code).trim(),
+          name: String(parsed.name).trim(),
         });
       } else {
         setActiveClient(null);
@@ -252,7 +252,7 @@ export default function TicketMedioPage() {
     setLoading(true);
 
     const params = new URLSearchParams();
-    params.set('user_id', String(activeClient.id));
+    params.set('user_id', String(activeClient.id).trim());
     params.set('page', String(p));
     params.set('per_page', String(perPage));
     params.set('year_a', String(yearA));
@@ -315,8 +315,8 @@ export default function TicketMedioPage() {
 
   if (!activeClient) {
     return (
-      <Box sx={{ 
-        minHeight: '100vh', 
+      <Box sx={{
+        minHeight: '100vh',
         bgcolor: GRAY_EXTRA_LIGHT,
         display: 'flex',
         alignItems: 'center',
@@ -338,7 +338,7 @@ export default function TicketMedioPage() {
             }}
           >
             <Box sx={{ height: 6, background: `linear-gradient(90deg, ${GOLD_PRIMARY}, ${GOLD_LIGHT})` }} />
-            
+
             <CardContent sx={{ p: 4, textAlign: 'center' }}>
               <Avatar
                 sx={{
@@ -356,7 +356,7 @@ export default function TicketMedioPage() {
               <Typography variant="h4" sx={{ fontWeight: 700, color: TEXT_DARK, mb: 1 }}>
                 Nenhum cliente selecionado
               </Typography>
-              
+
               <Typography sx={{ color: GRAY_MAIN, mb: 4, maxWidth: 360, mx: 'auto' }}>
                 Para visualizar o Ticket Médio, primeiro selecione um cliente no menu lateral.
               </Typography>

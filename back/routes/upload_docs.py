@@ -52,47 +52,43 @@ def route_list_docs_clientes(current_user):
     id_cliente = request.args.get("id_cliente")
     categoria = request.args.get("categoria")
 
-    # normaliza id_cliente
-    id_cliente_int = None
+    id_cliente_val = None
     if id_cliente is not None and str(id_cliente).strip():
-        try:
-            id_cliente_int = int(id_cliente)
-        except Exception:
-            return jsonify({"error": "Invalid id_cliente"}), 400
+        id_cliente_val = str(id_cliente).strip()
 
-    return list_docs_clientes(current_user, id_cliente=id_cliente_int, categoria=categoria)
+    return list_docs_clientes(current_user, id_cliente=id_cliente_val, categoria=categoria)
 
 
 # GET BY ID (metadata)
-@upload_docs_routes.get("/docs-clientes/<int:doc_id>")
+@upload_docs_routes.get("/docs-clientes/<string:doc_id>")
 @token_required
 def route_get_doc_cliente(current_user, doc_id):
     return get_doc_cliente(current_user, doc_id)
 
 
 # READ/DOWNLOAD FILE
-@upload_docs_routes.get("/docs-clientes/<int:doc_id>/download")
+@upload_docs_routes.get("/docs-clientes/<string:doc_id>/download")
 @token_required
 def route_download_doc_cliente(current_user, doc_id):
     return download_doc_cliente(current_user, doc_id)
 
 
 # UPDATE metadata
-@upload_docs_routes.put("/docs-clientes/<int:doc_id>")
+@upload_docs_routes.put("/docs-clientes/<string:doc_id>")
 @token_required
 def route_update_doc_cliente(current_user, doc_id):
     return update_doc_cliente(current_user, doc_id)
 
 
 # REPLACE file
-@upload_docs_routes.put("/docs-clientes/<int:doc_id>/upload")
+@upload_docs_routes.put("/docs-clientes/<string:doc_id>/upload")
 @token_required
 def route_replace_doc_file(current_user, doc_id):
     return replace_doc_file(current_user, doc_id)
 
 
 # DELETE
-@upload_docs_routes.delete("/docs-clientes/<int:doc_id>")
+@upload_docs_routes.delete("/docs-clientes/<string:doc_id>")
 @token_required
 def route_delete_doc_cliente(current_user, doc_id):
     return delete_doc_cliente(current_user, doc_id)

@@ -47,11 +47,11 @@ def route_create_cycle(current_user):
 @client_cycle_routes.get("/client-cycle-single")
 @token_required
 def route_list_cycles(current_user):
-    user_id = request.args.get("user_id", type=int)
+    user_id = request.args.get("user_id")
     return list_client_cycles(current_user, user_id=user_id)
 
 
-@client_cycle_routes.get("/client-cycle-single/<int:user_id>")
+@client_cycle_routes.get("/client-cycle-single/<string:user_id>")
 @token_required
 def route_get_cycle(current_user, user_id):
     return get_client_cycle_by_user(current_user, user_id)
@@ -63,7 +63,7 @@ def route_upsert_cycle(current_user):
     return upsert_client_cycle_single(current_user)
 
 
-@client_cycle_routes.delete("/client-cycle-single/<int:user_id>")
+@client_cycle_routes.delete("/client-cycle-single/<string:user_id>")
 @token_required
 def route_delete_cycle(current_user, user_id):
     return delete_client_cycle_by_user(current_user, user_id)

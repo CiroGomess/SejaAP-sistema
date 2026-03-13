@@ -30,7 +30,7 @@ import {
 
   Badge as BadgeIcon,
   PersonSearch as PersonSearchIcon,
- 
+
   Download as DownloadIcon,
 
   Verified as VerifiedIcon,
@@ -52,7 +52,6 @@ const GOLD_LIGHT = '#F5E6B8';
 const DARK_BG = '#0F172A';
 const WHITE = '#FFFFFF';
 const GRAY_MAIN = '#64748B';
-const GRAY_LIGHT = '#94A3B8';
 const GRAY_EXTRA_LIGHT = '#F1F5F9';
 const BORDER_LIGHT = 'rgba(100, 116, 139, 0.2)';
 const TEXT_DARK = '#0F172A';
@@ -60,7 +59,7 @@ const TEXT_DARK = '#0F172A';
 const STORAGE_KEY = 'selectedClient';
 
 type SelectedClient = {
-  id: number;
+  id: string;
   code: string;
   name: string;
 };
@@ -145,7 +144,7 @@ export default function AnalisePage() {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('id_cliente', String(activeClient.id));
+      fd.append('id_cliente', String(activeClient.id).trim());
       fd.append('categoria', DEFAULT_CATEGORIA);
 
       const res = await services(IMPORT_ENDPOINT, {
@@ -198,9 +197,9 @@ export default function AnalisePage() {
       const parsed = JSON.parse(raw);
       if (parsed?.id && parsed?.code && parsed?.name) {
         setActiveClient({
-          id: Number(parsed.id),
-          code: String(parsed.code),
-          name: String(parsed.name),
+          id: String(parsed.id).trim(),
+          code: String(parsed.code).trim(),
+          name: String(parsed.name).trim(),
         });
       } else {
         setActiveClient(null);
@@ -213,8 +212,8 @@ export default function AnalisePage() {
   // UI quando NÃO tem cliente selecionado
   if (!activeClient) {
     return (
-      <Box sx={{ 
-        minHeight: '100vh', 
+      <Box sx={{
+        minHeight: '100vh',
         bgcolor: GRAY_EXTRA_LIGHT,
         display: 'flex',
         alignItems: 'center',
@@ -235,7 +234,7 @@ export default function AnalisePage() {
             }}
           >
             <Box sx={{ height: 6, background: `linear-gradient(90deg, ${GOLD_PRIMARY}, ${GOLD_LIGHT})` }} />
-            
+
             <CardContent sx={{ p: 4, textAlign: 'center' }}>
               <Avatar
                 sx={{
@@ -253,7 +252,7 @@ export default function AnalisePage() {
               <Typography variant="h4" sx={{ fontWeight: 700, color: TEXT_DARK, mb: 1 }}>
                 Nenhum cliente selecionado
               </Typography>
-              
+
               <Typography sx={{ color: GRAY_MAIN, mb: 4, maxWidth: 360, mx: 'auto' }}>
                 Para importar análises de margem, primeiro selecione um cliente no menu lateral ou na lista de clientes.
               </Typography>
@@ -458,10 +457,10 @@ export default function AnalisePage() {
                           Formatos aceitos:
                         </Typography>
                         <Stack direction="row" spacing={1.5} sx={{ mb: 3 }}>
-                          <Chip 
-                            icon={<DescriptionIcon />} 
-                            label=".xlsx" 
-                            sx={{ bgcolor: alpha(GRAY_MAIN, 0.05), fontWeight: 500 }} 
+                          <Chip
+                            icon={<DescriptionIcon />}
+                            label=".xlsx"
+                            sx={{ bgcolor: alpha(GRAY_MAIN, 0.05), fontWeight: 500 }}
                           />
                         </Stack>
 
@@ -552,9 +551,9 @@ export default function AnalisePage() {
                         <Typography variant="body2" sx={{ color: GRAY_MAIN, mb: 2, fontWeight: 600 }}>
                           Detalhes técnicos:
                         </Typography>
-                        
+
                         <Stack spacing={2}>
-                          
+
 
                           <Paper
                             elevation={0}

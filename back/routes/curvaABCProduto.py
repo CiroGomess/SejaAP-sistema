@@ -1,4 +1,3 @@
-# curvaABCProduto.py
 import os
 import jwt
 from functools import wraps
@@ -39,12 +38,13 @@ def token_required(fn):
 def route_list_curva_abc_produtos(current_user):
     """
     Exemplos:
-      /curva-abc-produtos?user_id=10&tipo=produto
-      /curva-abc-produtos?user_id=10&tipo=cliente
-      /curva-abc-produtos?user_id=10&tipo=produto&year_a=2024&year_b=2025
+      /curva-abc-produtos?user_id=<hash>&tipo=produto
+      /curva-abc-produtos?user_id=<hash>&tipo=cliente
+      /curva-abc-produtos?user_id=<hash>&tipo=produto&year_a=2024&year_b=2025
     """
 
-    user_id = request.args.get("user_id", type=int)
+    user_id = request.args.get("user_id")
+    user_id = str(user_id).strip() if user_id is not None else ""
 
     page = request.args.get("page", default=1, type=int)
     per_page = request.args.get("per_page", default=10, type=int)
@@ -76,9 +76,10 @@ def route_list_curva_abc_produtos(current_user):
 def route_get_curva_abc_summary(current_user):
     """
     Retorna os totais para os cards do dashboard.
-    Exemplo: /curva-abc-summary?user_id=10&year=2025
+    Exemplo: /curva-abc-summary?user_id=<hash>&year=2025
     """
-    user_id = request.args.get("user_id", type=int)
+    user_id = request.args.get("user_id")
+    user_id = str(user_id).strip() if user_id is not None else ""
     year = request.args.get("year", type=int)
 
     return get_curva_abc_summary(

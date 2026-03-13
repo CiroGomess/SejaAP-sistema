@@ -65,7 +65,7 @@ type ContabilidadeDashboardTopCategoria = {
 };
 
 type ContabilidadeDashboardFiltros = {
-  user_id: number;
+  user_id: string;
   ano: number;
   anos_disponiveis: number[];
 };
@@ -94,7 +94,7 @@ function getSelectedClientFromStorage(): SelectedClient | null {
     const parsed = JSON.parse(raw);
     if (parsed?.id && parsed?.code && parsed?.name) {
       return {
-        id: Number(parsed.id),
+        id: parsed.id,
         code: String(parsed.code),
         name: String(parsed.name),
       };

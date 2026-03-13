@@ -2,6 +2,8 @@ from datetime import datetime
 from flask import request, jsonify
 from config.db import get_connection
 from passlib.hash import django_pbkdf2_sha256
+from utils.helpers import generate_secure_id
+
 
 # Campos aceitos pelo INSERT/UPDATE via API
 FIELDS = {
@@ -39,6 +41,7 @@ USER_FIELDS = {
     "is_superuser",
 }
 
+
 def create_customer():
     data = request.get_json(silent=True) or {}
 
@@ -68,9 +71,20 @@ def create_customer():
         conn = get_connection()
         cur = conn.cursor()
 
+        # valida duplicidade básica do cliente
+        cur.execute("SELECT id FROM public.clientes WHERE code = %s LIMIT 1;", (payload["code"],))
+        if cur.fetchone():
+            return jsonify({"error": "code already exists"}), 409
+
+        cur.execute("SELECT id FROM public.clientes WHERE email = %s LIMIT 1;", (payload["email"],))
+        if cur.fetchone():
+            return jsonify({"error": "email already exists"}), 409
+
         # ========= 1) CRIA CLIENTE =========
-        columns = list(payload.keys())
-        values = [payload[c] for c in columns]
+        novo_customer_id = generate_secure_id()
+
+        columns = ["id"] + list(payload.keys())
+        values = [novo_customer_id] + [payload[c] for c in payload.keys()]
         placeholders = ", ".join(["%s"] * len(columns))
 
         sql_customer = f"""
@@ -107,13 +121,12 @@ def create_customer():
             is_staff = bool(user_payload.get("is_staff", False))
             is_superuser = bool(user_payload.get("is_superuser", False))
 
-            # Não deixa criar superuser pela API do cliente (segurança básica)
-            # Se você quiser permitir, remova esse bloco.
+            # Não deixa criar superuser pela API do cliente
             if is_superuser:
                 conn.rollback()
                 return jsonify({"error": "Não é permitido criar superuser por este endpoint."}), 403
 
-            # valida duplicidade
+            # valida duplicidade do usuário
             cur.execute("SELECT id FROM public.auth_user WHERE username = %s LIMIT 1;", (username,))
             if cur.fetchone():
                 conn.rollback()
@@ -125,17 +138,18 @@ def create_customer():
                 return jsonify({"error": "email already exists"}), 409
 
             password_hash = django_pbkdf2_sha256.hash(password)
+            novo_user_id = generate_secure_id()
 
-            # OBS: depende do seu auth_user ter a coluna client_id (passo do SQL)
             cur.execute(
                 """
                 INSERT INTO public.auth_user
-                    (password, last_login, is_superuser, username, first_name, last_name, email, is_staff, is_active, date_joined, client_id)
+                    (id, password, last_login, is_superuser, username, first_name, last_name, email, is_staff, is_active, date_joined, client_id)
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, username, email, first_name, last_name, is_superuser, is_staff, is_active, client_id;
                 """,
                 (
+                    novo_user_id,
                     password_hash,
                     None,
                     is_superuser,

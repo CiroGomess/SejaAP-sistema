@@ -2,6 +2,7 @@
 
 from flask import request, jsonify
 from config.db import get_connection
+from utils.helpers import generate_secure_id
 
 FIELDS = {
     "user_id",
@@ -21,7 +22,7 @@ STEP_KEYS = [
 ]
 
 
-def _customer_id_exists(cur, customer_id: int) -> bool:
+def _customer_id_exists(cur, customer_id: str) -> bool:
     cur.execute(
         """
         SELECT 1
@@ -63,6 +64,11 @@ def _validate_payload(data: dict, is_create: bool):
     if missing:
         return f"Missing fields: {', '.join(missing)}"
 
+    # valida user_id como string não vazia
+    if "user_id" in data and data.get("user_id") is not None:
+        if not str(data.get("user_id")).strip():
+            return "Invalid user_id: cannot be empty"
+
     # valida steps/days
     for step_key, days_key, op_key, fin_key in STEP_KEYS:
         if step_key in data and data.get(step_key) is not None:
@@ -77,12 +83,11 @@ def _validate_payload(data: dict, is_create: bool):
             if v < 0:
                 return f"Invalid {days_key}: must be >= 0"
 
-        # ✅ valida 1 OU outro (se vier no payload)
+        # valida 1 OU outro (se vier no payload)
         op = _to_bool(data.get(op_key))
         fin = _to_bool(data.get(fin_key))
 
         if op is not None or fin is not None:
-            # se um veio, ambos precisam estar presentes e formar 1-of
             if op is None or fin is None:
                 return f"Missing fields: {op_key}, {fin_key}"
             if (1 if op else 0) + (1 if fin else 0) != 1:
@@ -132,12 +137,14 @@ def create_client_cycle_single(current_user=None):
         conn = get_connection()
         cur = conn.cursor()
 
-        user_id = int(payload["user_id"])
+        user_id = str(payload["user_id"]).strip()
         if not _customer_id_exists(cur, user_id):
             return jsonify({"error": "Invalid user_id", "details": "user_id must exist in public.clientes.id"}), 400
 
-        cols = list(payload.keys())
-        vals = [payload[c] for c in cols]
+        novo_id = generate_secure_id()
+
+        cols = ["id"] + list(payload.keys())
+        vals = [novo_id] + [payload[c] for c in payload.keys()]
         placeholders = ", ".join(["%s"] * len(vals))
 
         sql = f"""
@@ -170,9 +177,9 @@ def create_client_cycle_single(current_user=None):
 
 
 # =========================
-# LIST (opcional)
+# LIST
 # =========================
-def list_client_cycles(current_user=None, user_id: int | None = None):
+def list_client_cycles(current_user=None, user_id: str | None = None):
     conn = None
     try:
         conn = get_connection()
@@ -180,9 +187,9 @@ def list_client_cycles(current_user=None, user_id: int | None = None):
 
         where_sql = ""
         params = []
-        if user_id is not None:
+        if user_id is not None and str(user_id).strip():
             where_sql = "WHERE user_id = %s"
-            params.append(user_id)
+            params.append(str(user_id).strip())
 
         cur.execute(
             f"""
@@ -215,7 +222,7 @@ def list_client_cycles(current_user=None, user_id: int | None = None):
 # =========================
 # GET BY USER_ID
 # =========================
-def get_client_cycle_by_user(current_user=None, user_id: int = 0):
+def get_client_cycle_by_user(current_user=None, user_id: str = ""):
     conn = None
     try:
         conn = get_connection()
@@ -253,7 +260,7 @@ def get_client_cycle_by_user(current_user=None, user_id: int = 0):
 
 
 # =========================
-# UPSERT (recomendado)
+# UPSERT
 # =========================
 def upsert_client_cycle_single(current_user=None):
     data = request.get_json(silent=True) or {}
@@ -261,12 +268,11 @@ def upsert_client_cycle_single(current_user=None):
     if not data.get("user_id"):
         return jsonify({"error": "Missing fields: user_id"}), 400
 
-    # no upsert, você pode mandar parcial, mas para ciclo é recomendado mandar tudo
     err = _validate_payload(data, is_create=False)
     if err:
         return jsonify({"error": err}), 400
 
-    user_id = int(data["user_id"])
+    user_id = str(data["user_id"]).strip()
     payload = {k: data.get(k) for k in FIELDS if k in data and k != "user_id"}
 
     if not payload:
@@ -321,7 +327,7 @@ def upsert_client_cycle_single(current_user=None):
 # =========================
 # DELETE BY USER_ID
 # =========================
-def delete_client_cycle_by_user(current_user=None, user_id: int = 0):
+def delete_client_cycle_by_user(current_user=None, user_id: str = ""):
     conn = None
     try:
         conn = get_connection()

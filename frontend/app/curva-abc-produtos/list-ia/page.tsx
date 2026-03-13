@@ -20,13 +20,13 @@ import {
   IconButton,
   Grid,
   CircularProgress,
-  Alert,
+
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Badge,
-  LinearProgress,
+
 } from '@mui/material';
 
 import {
@@ -41,13 +41,7 @@ import {
   Refresh as RefreshIcon,
   Visibility as VisibilityIcon,
   Close as CloseIcon,
-  TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
-  Analytics as AnalyticsIcon,
-  Verified as VerifiedIcon,
-  Info as InfoIcon,
-  Warning as WarningIcon,
-  CheckCircle as CheckCircleIcon,
+  
 } from '@mui/icons-material';
 
 import AppAlert, { AlertType } from '@/components/AppAlert';
@@ -58,15 +52,15 @@ const GOLD_PRIMARY = '#E6C969';
 const GOLD_DARK = '#C4A052';
 const GOLD_LIGHT = '#F5E6B8';
 const DARK_BG = '#0F172A';
-const DARK_LIGHT = '#1E293B';
+
 const WHITE = '#FFFFFF';
 const GRAY_MAIN = '#64748B';
 const GRAY_LIGHT = '#94A3B8';
 const GRAY_EXTRA_LIGHT = '#F1F5F9';
 const BORDER_LIGHT = 'rgba(100, 116, 139, 0.2)';
-const BORDER_MEDIUM = 'rgba(100, 116, 139, 0.3)';
+
 const TEXT_DARK = '#0F172A';
-const TEXT_LIGHT = '#FFFFFF';
+
 
 // Cores de status
 const STATUS_COLORS = {
@@ -85,7 +79,7 @@ const STATUS_COLORS = {
 const STORAGE_KEY = 'selectedClient';
 
 type SelectedClient = {
-  id: number;
+  id: string;
   code: string;
   name: string;
 };
@@ -96,8 +90,8 @@ type Evidencia = {
 };
 
 type Analise = {
-  id: number;
-  user_id: number;
+  id: string;
+  user_id: string;
   aspecto_avaliado: string;
   created_at: string;
   situacao_identificada: string;
@@ -110,7 +104,7 @@ type Analise = {
 type ApiResponse = {
   analises: Analise[];
   created_at_ref: string;
-  user_id: number;
+  user_id: string;
   categoria?: string;
 };
 
@@ -141,7 +135,7 @@ function getSelectedClientFromStorage(): SelectedClient | null {
     const parsed = JSON.parse(raw);
     if (parsed?.id && parsed?.code && parsed?.name) {
       return {
-        id: Number(parsed.id),
+        id: parsed.id,
         code: String(parsed.code),
         name: String(parsed.name),
       };

@@ -70,7 +70,7 @@ const STATUS_COLORS = {
 const STORAGE_KEY = 'selectedClient';
 
 type SelectedClient = {
-  id: number;
+  id: string;
   code: string;
   name: string;
 };
@@ -81,7 +81,7 @@ type Evidencia = {
 };
 
 type Analise = {
-  id: number;
+  id: string;
   user_id: number;
   aspecto_avaliado: string;
   created_at: string;
@@ -95,7 +95,7 @@ type Analise = {
 type ApiResponse = {
   analises: Analise[];
   created_at_ref: string;
-  user_id: number;
+  user_id: string;
   categoria?: string;
   summary?: {
     year?: number;
@@ -132,7 +132,7 @@ function getSelectedClientFromStorage(): SelectedClient | null {
     const parsed = JSON.parse(raw);
     if (parsed?.id && parsed?.code && parsed?.name) {
       return {
-        id: Number(parsed.id),
+        id: parsed.id,
         code: String(parsed.code),
         name: String(parsed.name),
       };

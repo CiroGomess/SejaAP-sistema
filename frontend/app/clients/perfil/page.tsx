@@ -20,7 +20,6 @@ import {
   Tooltip,
   Fade,
   Divider,
-
   LinearProgress,
 } from '@mui/material';
 
@@ -32,15 +31,11 @@ import {
   LocationOn as LocationIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
-  WhatsApp as WhatsAppIcon,
- 
   Numbers as NumbersIcon,
   Notes as NotesIcon,
-
   FileUpload as FileUploadIcon,
   FileDownload as FileDownloadIcon,
   Delete as DeleteIcon,
-
   FilterList as FilterListIcon,
   Description as DescriptionIcon,
   PictureAsPdf as PdfIcon,
@@ -51,7 +46,6 @@ import {
 
 import services from '@/services/service';
 import AppAlert, { AlertType } from '@/components/AppAlert';
-
 import { Customer, DocCliente } from '@/components/clientProfile/types';
 
 // --- PALETA DE CORES EAP (Refinada) ---
@@ -79,8 +73,16 @@ function pickApiError(data: any): string {
 
 function normalizeCustomer(input: any): Customer {
   const c = input?.customer ?? input ?? {};
+
   return {
-    id: c.id ?? c.user_id ?? c.customer_id ?? null,
+    id:
+      c.id != null
+        ? String(c.id)
+        : c.user_id != null
+          ? String(c.user_id)
+          : c.customer_id != null
+            ? String(c.customer_id)
+            : null,
     code: String(c.code ?? ''),
     first_name: String(c.first_name ?? ''),
     last_name: String(c.last_name ?? ''),
@@ -105,9 +107,10 @@ function normalizeCustomer(input: any): Customer {
 
 function normalizeDocList(data: any): DocCliente[] {
   const list = Array.isArray(data?.docs) ? data.docs : Array.isArray(data) ? data : [];
+
   return list.map((d: any) => ({
-    id: Number(d.id),
-    id_cliente: Number(d.id_cliente),
+    id: String(d.id ?? ''),
+    id_cliente: String(d.id_cliente ?? ''),
     caminho_arquivo: String(d.caminho_arquivo ?? ''),
     categoria: String(d.categoria ?? ''),
     data_envio: d.data_envio ? String(d.data_envio) : null,
@@ -115,22 +118,22 @@ function normalizeDocList(data: any): DocCliente[] {
 }
 
 // Componente de cabeçalho refinado
-const ProfileHeader = ({ 
-  onBack, 
-  onRefresh, 
+const ProfileHeader = ({
+  onBack,
+  onRefresh,
   loading,
-  customerCode 
-}: { 
-  onBack: () => void; 
-  onRefresh: () => void; 
+  customerCode,
+}: {
+  onBack: () => void;
+  onRefresh: () => void;
   loading: boolean;
   customerCode?: string;
 }) => (
-  <Paper 
-    elevation={0} 
-    sx={{ 
-      p: 3, 
-      mb: 3, 
+  <Paper
+    elevation={0}
+    sx={{
+      p: 3,
+      mb: 3,
       borderRadius: 3,
       border: `1px solid ${BORDER_LIGHT}`,
       background: `linear-gradient(135deg, ${WHITE} 0%, ${GRAY_LIGHT} 100%)`,
@@ -149,7 +152,7 @@ const ProfileHeader = ({
             <ArrowBackIcon />
           </IconButton>
         </Tooltip>
-        
+
         <Box>
           <Stack direction="row" spacing={1} alignItems="center">
             <Typography variant="h5" sx={{ fontWeight: 800, color: CHARCOAL }}>
@@ -200,7 +203,13 @@ const ProfileHeader = ({
 );
 
 // Card de resumo do cliente refinado
-const CustomerSummaryCard = ({ customer, lastUpdated }: { customer: Customer; lastUpdated: string }) => {
+const CustomerSummaryCard = ({
+  customer,
+  lastUpdated,
+}: {
+  customer: Customer;
+  lastUpdated: string;
+}) => {
   const statusConfig = {
     active: { color: SUCCESS, label: 'Ativo', bgColor: alpha(SUCCESS, 0.1) },
     pending: { color: WARNING, label: 'Pendente', bgColor: alpha(WARNING, 0.1) },
@@ -210,9 +219,11 @@ const CustomerSummaryCard = ({ customer, lastUpdated }: { customer: Customer; la
   const currentStatus = statusConfig[customer.status] || statusConfig.pending;
 
   return (
-    <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: `1px solid ${BORDER_LIGHT}`, height: '100%' }}>
+    <Paper
+      elevation={0}
+      sx={{ p: 3, borderRadius: 3, border: `1px solid ${BORDER_LIGHT}`, height: '100%' }}
+    >
       <Stack spacing={3}>
-        {/* Header do Card */}
         <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
           <Stack direction="row" spacing={2} alignItems="center">
             <Avatar
@@ -241,7 +252,6 @@ const CustomerSummaryCard = ({ customer, lastUpdated }: { customer: Customer; la
                     borderRadius: 1.5,
                   }}
                 />
-              
               </Stack>
             </Box>
           </Stack>
@@ -249,7 +259,6 @@ const CustomerSummaryCard = ({ customer, lastUpdated }: { customer: Customer; la
 
         <Divider sx={{ borderColor: BORDER_LIGHT }} />
 
-        {/* Informações em Grid */}
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, sm: 6 }}>
             <Stack direction="row" spacing={1} alignItems="center">
@@ -294,7 +303,6 @@ const CustomerSummaryCard = ({ customer, lastUpdated }: { customer: Customer; la
           )}
         </Grid>
 
-        {/* Endereço */}
         {(customer.street || customer.city) && (
           <>
             <Divider sx={{ borderColor: BORDER_LIGHT }} />
@@ -305,7 +313,7 @@ const CustomerSummaryCard = ({ customer, lastUpdated }: { customer: Customer; la
                   Endereço
                 </Typography>
               </Stack>
-              <Typography sx={{ color: GRAY_MAIN, fontSize: '0.9rem' }}>
+              <Typography sx={{ color: GRAY_MAIN, fontSize: '0.9rem', whiteSpace: 'pre-line' }}>
                 {customer.street && `${customer.street}, ${customer.number || 'S/N'}`}
                 {customer.complement && ` - ${customer.complement}`}
                 {customer.neighborhood && `\n${customer.neighborhood}`}
@@ -317,7 +325,6 @@ const CustomerSummaryCard = ({ customer, lastUpdated }: { customer: Customer; la
           </>
         )}
 
-        {/* Observações */}
         {customer.notes && (
           <>
             <Divider sx={{ borderColor: BORDER_LIGHT }} />
@@ -335,12 +342,12 @@ const CustomerSummaryCard = ({ customer, lastUpdated }: { customer: Customer; la
           </>
         )}
 
-        {/* Timestamps */}
         <Box sx={{ mt: 'auto' }}>
           <Divider sx={{ borderColor: BORDER_LIGHT }} />
           <Stack direction="row" justifyContent="space-between" sx={{ mt: 1.5 }}>
             <Typography sx={{ color: GRAY_MAIN, fontSize: '0.7rem' }}>
-              Criado em: {customer.created_at ? new Date(customer.created_at).toLocaleDateString('pt-BR') : '-'}
+              Criado em:{' '}
+              {customer.created_at ? new Date(customer.created_at).toLocaleDateString('pt-BR') : '-'}
             </Typography>
             <Typography sx={{ color: GRAY_MAIN, fontSize: '0.7rem' }}>
               Atualizado: {lastUpdated}
@@ -371,7 +378,10 @@ const DocumentUploadCard = ({
   const categorias = ['CONTRATO', 'IDENTIDADE', 'COMPROVANTE', 'FISCAL', 'OUTROS'];
 
   return (
-    <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: `1px solid ${BORDER_LIGHT}`, height: '100%' }}>
+    <Paper
+      elevation={0}
+      sx={{ p: 3, borderRadius: 3, border: `1px solid ${BORDER_LIGHT}`, height: '100%' }}
+    >
       <Stack spacing={3}>
         <Stack direction="row" spacing={1.5} alignItems="center">
           <Avatar
@@ -397,7 +407,6 @@ const DocumentUploadCard = ({
 
         <Divider sx={{ borderColor: BORDER_LIGHT }} />
 
-        {/* Select de Categoria */}
         <Box>
           <Typography sx={{ fontWeight: 600, color: CHARCOAL, fontSize: '0.9rem', mb: 1 }}>
             Categoria do Documento
@@ -424,7 +433,6 @@ const DocumentUploadCard = ({
           </Stack>
         </Box>
 
-        {/* Área de Upload */}
         <Box
           sx={{
             border: `2px dashed ${file ? GOLD_PRIMARY : BORDER_LIGHT}`,
@@ -447,7 +455,7 @@ const DocumentUploadCard = ({
             style={{ display: 'none' }}
             onChange={(e) => setFile(e.target.files?.[0] || null)}
           />
-          
+
           {file ? (
             <Stack spacing={1} alignItems="center">
               <Avatar sx={{ bgcolor: alpha(SUCCESS, 0.1), color: SUCCESS }}>
@@ -473,7 +481,6 @@ const DocumentUploadCard = ({
           )}
         </Box>
 
-        {/* Botão de Upload */}
         <Button
           onClick={onUpload}
           disabled={!file || uploading}
@@ -517,8 +524,8 @@ const DocumentsTableCard = ({
   categoriaFilter: string;
   setCategoriaFilter: (value: string) => void;
   onRefresh: () => void;
-  onDownload: (id: number) => void;
-  onDelete: (id: number) => void;
+  onDownload: (id: string) => void;
+  onDelete: (id: string) => void;
   loading: boolean;
 }) => {
   const categorias = ['ALL', 'CONTRATO', 'IDENTIDADE', 'COMPROVANTE', 'FISCAL', 'OUTROS'];
@@ -526,19 +533,18 @@ const DocumentsTableCard = ({
   const getFileIcon = (filename: string) => {
     const ext = filename.split('.').pop()?.toLowerCase();
     if (ext === 'pdf') return <PdfIcon sx={{ color: ERROR }} />;
-    if (ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'gif') 
+    if (ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'gif') {
       return <ImageIcon sx={{ color: INFO }} />;
+    }
     return <FileIcon sx={{ color: GRAY_MAIN }} />;
   };
 
-  const filteredDocs = categoriaFilter === 'ALL' 
-    ? docs 
-    : docs.filter(doc => doc.categoria === categoriaFilter);
+  const filteredDocs =
+    categoriaFilter === 'ALL' ? docs : docs.filter((doc) => doc.categoria === categoriaFilter);
 
   return (
     <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: `1px solid ${BORDER_LIGHT}` }}>
       <Stack spacing={3}>
-        {/* Header */}
         <Stack direction="row" justifyContent="space-between" alignItems="center">
           <Stack direction="row" spacing={1.5} alignItems="center">
             <Avatar
@@ -557,7 +563,8 @@ const DocumentsTableCard = ({
                 Documentos do Cliente
               </Typography>
               <Typography sx={{ color: GRAY_MAIN, fontSize: '0.8rem' }}>
-                {filteredDocs.length} {filteredDocs.length === 1 ? 'documento encontrado' : 'documentos encontrados'}
+                {filteredDocs.length}{' '}
+                {filteredDocs.length === 1 ? 'documento encontrado' : 'documentos encontrados'}
               </Typography>
             </Box>
           </Stack>
@@ -569,7 +576,6 @@ const DocumentsTableCard = ({
           </Tooltip>
         </Stack>
 
-        {/* Filtros */}
         <Box>
           <Typography sx={{ fontWeight: 600, color: CHARCOAL, fontSize: '0.9rem', mb: 1.5 }}>
             Filtrar por categoria
@@ -599,10 +605,14 @@ const DocumentsTableCard = ({
 
         <Divider sx={{ borderColor: BORDER_LIGHT }} />
 
-        {/* Lista de Documentos */}
         {loading ? (
           <Box sx={{ py: 4 }}>
-            <LinearProgress sx={{ bgcolor: alpha(GOLD_PRIMARY, 0.1), '& .MuiLinearProgress-bar': { bgcolor: GOLD_PRIMARY } }} />
+            <LinearProgress
+              sx={{
+                bgcolor: alpha(GOLD_PRIMARY, 0.1),
+                '& .MuiLinearProgress-bar': { bgcolor: GOLD_PRIMARY },
+              }}
+            />
           </Box>
         ) : filteredDocs.length === 0 ? (
           <Box sx={{ py: 6, textAlign: 'center' }}>
@@ -708,7 +718,6 @@ export default function ClientePerfilPage() {
 
   const [categoriaFilter, setCategoriaFilter] = useState<string>('ALL');
 
-  /* ===== ALERT STATE ===== */
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertSeverity, setAlertSeverity] = useState<AlertType>('info');
@@ -738,10 +747,12 @@ export default function ClientePerfilPage() {
     setLoading(false);
   };
 
-  const loadDocs = async (id_cliente: number) => {
+  const loadDocs = async (id_cliente: string) => {
     setDocsLoading(true);
 
-    const res = await services(`/docs-clientes?id_cliente=${id_cliente}`, { method: 'GET' });
+    const res = await services(`/docs-clientes?id_cliente=${encodeURIComponent(id_cliente)}`, {
+      method: 'GET',
+    });
 
     if (!res.success) {
       showAlert(pickApiError(res.data), 'error');
@@ -773,7 +784,7 @@ export default function ClientePerfilPage() {
 
   useEffect(() => {
     if (customer?.id) {
-      loadDocs(Number(customer.id));
+      loadDocs(customer.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customer?.id]);
@@ -783,6 +794,7 @@ export default function ClientePerfilPage() {
       showAlert('Cliente inválido para upload.', 'warning');
       return;
     }
+
     if (!file) {
       showAlert('Selecione um arquivo.', 'warning');
       return;
@@ -792,8 +804,8 @@ export default function ClientePerfilPage() {
 
     const form = new FormData();
     form.append('file', file);
-    form.append('id_cliente', String(customer.id));
-    form.append('categoria', String(categoriaUpload));
+    form.append('id_cliente', customer.id);
+    form.append('categoria', categoriaUpload);
 
     const res = await services(`/docs-clientes/upload`, {
       method: 'POST',
@@ -810,45 +822,44 @@ export default function ClientePerfilPage() {
 
     showAlert('Documento enviado com sucesso.', 'success');
     setFile(null);
-    await loadDocs(Number(customer.id));
+    await loadDocs(customer.id);
   };
 
-  const onDownload = async (docId: number) => {
+  const onDownload = async (docId: string) => {
     try {
       const doc = docs.find((d) => d.id === docId);
-      const fileName = doc 
-        ? doc.caminho_arquivo.split('/').pop() 
-        : `documento_${docId}`;
+      const fileName = doc ? doc.caminho_arquivo.split('/').pop() : `documento_${docId}`;
 
-      const res = await services(`/documents/download/${docId}`, {
+      const res = await services(`/documents/download/${encodeURIComponent(docId)}`, {
         method: 'GET',
-        responseType: 'blob'
+        responseType: 'blob',
       });
 
-      if (res.success) {
-        const blob = new Blob([res.data]);
-        const url = window.URL.createObjectURL(blob);
-        
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', fileName || 'download');
-        
-        document.body.appendChild(link);
-        link.click();
-        
-        link.remove();
-        window.URL.revokeObjectURL(url);
-      } else {
-        console.error("Erro backend:", res);
+      if (!res.success) {
+        console.error('Erro backend:', res);
         showAlert('Erro ao baixar: Arquivo não encontrado no servidor.', 'error');
+        return;
       }
+
+      const blob = new Blob([res.data]);
+      const url = window.URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName || 'download');
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Erro download:", error);
+      console.error('Erro download:', error);
       showAlert('Falha de conexão ao tentar baixar arquivo.', 'error');
     }
   };
 
-  const onDelete = async (docId: number) => {
+  const onDelete = async (docId: string) => {
     const result = await Swal.fire({
       title: 'Excluir documento?',
       text: 'Esta ação não pode ser desfeita.',
@@ -863,7 +874,9 @@ export default function ClientePerfilPage() {
 
     if (!result.isConfirmed) return;
 
-    const res = await services(`/docs-clientes/${docId}`, { method: 'DELETE' });
+    const res = await services(`/docs-clientes/${encodeURIComponent(docId)}`, {
+      method: 'DELETE',
+    });
 
     if (!res.success) {
       showAlert(pickApiError(res.data), 'error');
@@ -873,7 +886,7 @@ export default function ClientePerfilPage() {
     showAlert('Documento excluído.', 'warning');
 
     if (customer?.id) {
-      await loadDocs(Number(customer.id));
+      await loadDocs(customer.id);
     }
   };
 
@@ -883,7 +896,9 @@ export default function ClientePerfilPage() {
         onBack={() => router.push('/clients')}
         onRefresh={async () => {
           await refreshAll();
-          if (customer?.id) await loadDocs(Number(customer.id));
+          if (customer?.id) {
+            await loadDocs(customer.id);
+          }
         }}
         loading={loading || docsLoading}
         customerCode={customer?.code}
@@ -926,7 +941,7 @@ export default function ClientePerfilPage() {
             <Grid size={{ xs: 12, md: 7, lg: 8 }}>
               <CustomerSummaryCard customer={customer} lastUpdated={lastUpdated} />
             </Grid>
-            
+
             <Grid size={{ xs: 12, md: 5, lg: 4 }}>
               <DocumentUploadCard
                 categoria={categoriaUpload}
@@ -943,7 +958,11 @@ export default function ClientePerfilPage() {
             docs={docs}
             categoriaFilter={categoriaFilter}
             setCategoriaFilter={setCategoriaFilter}
-            onRefresh={() => customer?.id && loadDocs(Number(customer.id))}
+            onRefresh={() => {
+              if (customer?.id) {
+                loadDocs(customer.id);
+              }
+            }}
             onDownload={onDownload}
             onDelete={onDelete}
             loading={docsLoading}
@@ -951,7 +970,12 @@ export default function ClientePerfilPage() {
         </Box>
       )}
 
-      <AppAlert open={alertOpen} message={alertMessage} severity={alertSeverity} onClose={() => setAlertOpen(false)} />
+      <AppAlert
+        open={alertOpen}
+        message={alertMessage}
+        severity={alertSeverity}
+        onClose={() => setAlertOpen(false)}
+      />
     </Container>
   );
 }

@@ -251,7 +251,7 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
         return;
       }
 
-      const userId = Number(rawId);
+      const userId = rawId
       if (!userId) {
         setIsAdmin(false);
         setLoadingUser(false);

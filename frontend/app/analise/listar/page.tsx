@@ -84,7 +84,7 @@ const STATUS_COLORS = {
 const STORAGE_KEY = 'selectedClient';
 
 type SelectedClient = {
-  id: number;
+  id: string;
   code: string;
   name: string;
 };
@@ -98,8 +98,8 @@ type Pagination = {
 };
 
 type AnaliseMargem = {
-  id: number;
-  user_id: number;
+  id: string;
+  user_id: string;
   produto_ou_servico: string | null;
   custo: string | null;
   hora_homem: string | null;
@@ -127,18 +127,18 @@ type DashboardResumo = {
     produto_ou_servico: string;
     margem_bruta: number;
     custo: number;
-    id: number;
+    id: string;
   } | null;
   pior_margem: {
     produto_ou_servico: string;
     margem_bruta: number;
     custo: number;
-    id: number;
+    id: string;
   } | null;
 };
 
 type DashboardTopItem = {
-  id: number;
+  id: string;
   produto_ou_servico: string;
   margem_bruta: number;
   custo: number;
@@ -153,7 +153,7 @@ type DashboardCategoria = {
 };
 
 type DashboardFiltros = {
-  user_id: number | null;
+  user_id: string | null;
   ano: number | null;
   anos_disponiveis: number[];
 };
@@ -240,17 +240,20 @@ function getSelectedClientFromStorage(): SelectedClient | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
+
     const parsed = JSON.parse(raw);
+
     if (parsed?.id && parsed?.code && parsed?.name) {
       return {
-        id: Number(parsed.id),
-        code: String(parsed.code),
-        name: String(parsed.name),
+        id: String(parsed.id).trim(),
+        code: String(parsed.code).trim(),
+        name: String(parsed.name).trim(),
       };
     }
   } catch {
     // ignore
   }
+
   return null;
 }
 
@@ -315,8 +318,9 @@ export default function AnaliseListarPage() {
       return;
     }
 
-    const userId = Number(client.id);
-    if (!Number.isFinite(userId) || userId <= 0) {
+    const userId = String(client.id).trim();
+
+    if (!userId) {
       setRows([]);
       setPagination(null);
       setLoading(false);
@@ -371,7 +375,7 @@ export default function AnaliseListarPage() {
 
     try {
       const qs = new URLSearchParams({
-        user_id: String(client.id),
+        user_id: client.id,
         ...(anoSelecionado !== '' ? { ano: String(anoSelecionado) } : {}),
       }).toString();
 
@@ -452,8 +456,8 @@ export default function AnaliseListarPage() {
 
     return rows.filter((r) => {
       const s = [
-        r.id,
-        r.user_id,
+        String(r.id),
+        String(r.user_id),
         r.produto_ou_servico,
         r.custo,
         r.hora_homem,

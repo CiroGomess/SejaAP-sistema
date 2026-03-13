@@ -5,7 +5,6 @@ import jwt
 from functools import wraps
 from flask import Blueprint, request, jsonify
 
-# Importamos APENAS a função de geração (a de status não existe mais)
 from controllers.gamaController import generate_gama_presentation_from_latest_insights
 
 JWT_SECRET = os.getenv("JWT_SECRET", "change-me")
@@ -33,18 +32,16 @@ def token_required(fn):
     return wrapper
 
 
-# Gera apresentação Gamma E AGUARDA O RESULTADO FINAL
 @gama_routes.post("/gama/presentation/from-latest")
 @token_required
 def route_generate_gama_from_latest(current_user):
-    user_id = request.args.get("user_id", type=int)
-    if not user_id or user_id <= 0:
+    user_id = request.args.get("user_id")
+    if not user_id or not str(user_id).strip():
         return jsonify(
             {
                 "error": "Missing or invalid user_id",
-                "details": "Ex: POST /gama/presentation/from-latest?user_id=10",
+                "details": "Ex: POST /gama/presentation/from-latest?user_id=<hash>",
             }
         ), 400
 
-    # Essa chamada agora vai demorar ~1 min para responder
     return generate_gama_presentation_from_latest_insights(current_user)

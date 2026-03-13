@@ -70,7 +70,7 @@ const UPLOAD_ENDPOINT = '/receitas/import-xlsx';
 const XLSX_MODEL_PUBLIC_PATH = '/models_xlsx/Modelo_Receita.xlsx';
 
 type ProdutoOuServico = 'PRODUTO' | 'SERVICO';
-type SelectedClient = { id: number; code: string; name: string };
+type SelectedClient = { id: string; code: string; name: string };
 type UploadState = 'idle' | 'uploading' | 'success' | 'error';
 
 function todayISO() {
@@ -151,11 +151,12 @@ export default function ReceitasCadastrarPage() {
       }
 
       const parsed = JSON.parse(raw);
+
       if (parsed?.id && parsed?.code && parsed?.name) {
         const client: SelectedClient = {
-          id: Number(parsed.id),
-          code: String(parsed.code),
-          name: String(parsed.name),
+          id: String(parsed.id).trim(),
+          code: String(parsed.code).trim(),
+          name: String(parsed.name).trim(),
         };
 
         setActiveClient(client);
@@ -273,7 +274,7 @@ export default function ReceitasCadastrarPage() {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('id_cliente', String(activeClient.id));
+      fd.append('id_cliente', String(activeClient.id).trim());
       fd.append('categoria', 'RECEITAS_XLSX');
 
       const res = await services(UPLOAD_ENDPOINT, {
@@ -326,8 +327,8 @@ export default function ReceitasCadastrarPage() {
   // UI quando NÃO tem cliente selecionado
   if (!activeClient) {
     return (
-      <Box sx={{ 
-        minHeight: '100vh', 
+      <Box sx={{
+        minHeight: '100vh',
         bgcolor: GRAY_EXTRA_LIGHT,
         display: 'flex',
         alignItems: 'center',
@@ -348,7 +349,7 @@ export default function ReceitasCadastrarPage() {
             }}
           >
             <Box sx={{ height: 6, background: `linear-gradient(90deg, ${GOLD_PRIMARY}, ${GOLD_LIGHT})` }} />
-            
+
             <CardContent sx={{ p: 4, textAlign: 'center' }}>
               <Avatar
                 sx={{
@@ -366,7 +367,7 @@ export default function ReceitasCadastrarPage() {
               <Typography variant="h4" sx={{ fontWeight: 700, color: TEXT_DARK, mb: 1 }}>
                 Nenhum cliente selecionado
               </Typography>
-              
+
               <Typography sx={{ color: GRAY_MAIN, mb: 4, maxWidth: 360, mx: 'auto' }}>
                 Para cadastrar uma receita, primeiro selecione um cliente no menu lateral ou na lista de clientes.
               </Typography>
@@ -577,73 +578,73 @@ export default function ReceitasCadastrarPage() {
                         </Typography>
                         <Grid container spacing={1.5}>
                           <Grid size={{ xs: 6 }}>
-                            <Chip 
-                              label="Nº do Orçamento" 
-                              size="small" 
-                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }} 
+                            <Chip
+                              label="Nº do Orçamento"
+                              size="small"
+                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }}
                             />
                           </Grid>
                           <Grid size={{ xs: 6 }}>
-                            <Chip 
-                              label="Cliente" 
-                              size="small" 
-                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }} 
+                            <Chip
+                              label="Cliente"
+                              size="small"
+                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }}
                             />
                           </Grid>
                           <Grid size={{ xs: 6 }}>
-                            <Chip 
-                              label="Data Emissão" 
-                              size="small" 
-                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }} 
+                            <Chip
+                              label="Data Emissão"
+                              size="small"
+                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }}
                             />
                           </Grid>
                           <Grid size={{ xs: 6 }}>
-                            <Chip 
-                              label="Data Vencimento" 
-                              size="small" 
-                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }} 
+                            <Chip
+                              label="Data Vencimento"
+                              size="small"
+                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }}
                             />
                           </Grid>
                           <Grid size={{ xs: 6 }}>
-                            <Chip 
-                              label="Produto/Serviço" 
-                              size="small" 
-                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }} 
+                            <Chip
+                              label="Produto/Serviço"
+                              size="small"
+                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }}
                             />
                           </Grid>
                           <Grid size={{ xs: 6 }}>
-                            <Chip 
-                              label="Quantidade" 
-                              size="small" 
-                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }} 
+                            <Chip
+                              label="Quantidade"
+                              size="small"
+                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }}
                             />
                           </Grid>
                           <Grid size={{ xs: 6 }}>
-                            <Chip 
-                              label="Valor Unitário" 
-                              size="small" 
-                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }} 
+                            <Chip
+                              label="Valor Unitário"
+                              size="small"
+                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }}
                             />
                           </Grid>
                           <Grid size={{ xs: 6 }}>
-                            <Chip 
-                              label="Unidade/Filial" 
-                              size="small" 
-                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }} 
+                            <Chip
+                              label="Unidade/Filial"
+                              size="small"
+                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }}
                             />
                           </Grid>
                           <Grid size={{ xs: 6 }}>
-                            <Chip 
-                              label="Projeto" 
-                              size="small" 
-                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }} 
+                            <Chip
+                              label="Projeto"
+                              size="small"
+                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }}
                             />
                           </Grid>
                           <Grid size={{ xs: 6 }}>
-                            <Chip 
-                              label="Centro de Resultado" 
-                              size="small" 
-                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }} 
+                            <Chip
+                              label="Centro de Resultado"
+                              size="small"
+                              sx={{ width: '100%', justifyContent: 'flex-start', bgcolor: alpha(GRAY_MAIN, 0.05) }}
                             />
                           </Grid>
                         </Grid>
@@ -713,10 +714,10 @@ export default function ReceitasCadastrarPage() {
                           Formatos aceitos:
                         </Typography>
                         <Stack direction="row" spacing={1.5} sx={{ mb: 3 }}>
-                          <Chip 
-                            icon={<DescriptionIcon />} 
-                            label=".xlsx" 
-                            sx={{ bgcolor: alpha(GRAY_MAIN, 0.05), fontWeight: 500 }} 
+                          <Chip
+                            icon={<DescriptionIcon />}
+                            label=".xlsx"
+                            sx={{ bgcolor: alpha(GRAY_MAIN, 0.05), fontWeight: 500 }}
                           />
                         </Stack>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Box,
   Card,
@@ -14,7 +14,8 @@ import {
   alpha,
   Zoom,
   Button,
-  CircularProgress 
+  CircularProgress,
+  Chip,
 } from '@mui/material';
 
 import {
@@ -38,23 +39,38 @@ const BORDER_LIGHT = 'rgba(100, 116, 139, 0.2)';
 const TEXT_DARK = '#0F172A';
 
 // --- TIPAGENS ---
-type ApiResponse = {
-  analises: any[];
-  created_at_ref: string;
-  user_id: number;
+type AnaliseItem = {
+  id: string;
+  user_id: string;
+  categoria?: string;
+  aspecto_avaliado?: string;
+  situacao_identificada?: string;
+  evidencias?: any[];
+  plano_de_acao?: any[];
+  riscos_associados?: any[];
+  created_at?: string;
 };
 
-// --- HELPER FUNCTIONS ---
+type ApiResponse = {
+  analises: AnaliseItem[];
+  created_at_ref?: string;
+  user_id: string;
+  categoria?: string;
+};
+
+// --- HELPERS ---
 function pickApiError(data: any): string {
   if (!data) return 'Erro inesperado.';
   if (typeof data === 'string') return data;
   if (typeof data.detail === 'string') return data.detail;
+  if (typeof data.details === 'string') return data.details;
+  if (typeof data.error === 'string') return data.error;
   return 'Falha ao processar a requisição.';
 }
 
 // --- PROPS ---
 type Props = {
-  userId: number;
+  userId: string;
   brand?: string;
   type?: 'produto' | 'clientes';
 };
@@ -63,12 +79,15 @@ export default function AnaliseCurvaABC_IA(props: Props) {
   const router = useRouter();
   const brand = props.brand ?? GOLD_PRIMARY;
   const analysisType = props.type ?? 'produto';
+
   const readEndpoint = '/toon/insights/saved/latest';
   const generateEndpoint = '/toon/insights';
 
-  const [loading, setLoading] = useState<boolean>(false);
-  const [generating, setGenerating] = useState<boolean>(false);
-  const [hasAnalises, setHasAnalises] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [hasAnalises, setHasAnalises] = useState(false);
+  const [analisesCount, setAnalisesCount] = useState(0);
+  const [createdAtRef, setCreatedAtRef] = useState<string>('');
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertSeverity, setAlertSeverity] = useState<AlertType>('info');
@@ -79,47 +98,89 @@ export default function AnaliseCurvaABC_IA(props: Props) {
     setAlertOpen(true);
   };
 
-  const displayTitle = analysisType === 'clientes' ? 'Carteira de Clientes' : 'Curva ABC (Produtos)';
-  const listPageUrl = analysisType === 'clientes'
-    ? '/curva-abc-clientes/list-ia'
-    : '/curva-abc-produtos/list-ia';
+  const displayTitle =
+    analysisType === 'clientes' ? 'Carteira de Clientes' : 'Curva ABC (Produtos)';
 
-  const load = async () => {
-    if (!props.userId) return;
+  const listPageUrl =
+    analysisType === 'clientes'
+      ? '/curva-abc-clientes/list-ia'
+      : '/curva-abc-produtos/list-ia';
+
+  const load = useCallback(async () => {
+    const safeUserId = String(props.userId || '').trim();
+    if (!safeUserId) {
+      setHasAnalises(false);
+      setAnalisesCount(0);
+      setCreatedAtRef('');
+      return;
+    }
 
     setLoading(true);
-    const params = new URLSearchParams({
-      user_id: String(props.userId),
-      type: analysisType
-    });
 
-    const res = await services(`${readEndpoint}?${params.toString()}`, { method: 'GET' });
-
-    if (res.success) {
-      setHasAnalises(res.data?.analises?.length > 0);
-    }
-    setLoading(false);
-  };
-
-  const handleGenerate = async () => {
-    if (!props.userId) return;
-
-    setGenerating(true);
     try {
       const params = new URLSearchParams({
-        user_id: String(props.userId),
-        type: analysisType
+        user_id: safeUserId,
       });
 
-      const res = await services(`${generateEndpoint}?${params.toString()}`, { method: 'GET' });
+      // só envia type se quiser filtrar por categoria no backend
+      if (analysisType) {
+        params.set('type', analysisType);
+      }
+
+      const res = await services(`${readEndpoint}?${params.toString()}`, {
+        method: 'GET',
+      });
+
+      console.log('Resposta da API:', res);
+
+      if (!res.success) {
+        setHasAnalises(false);
+        setAnalisesCount(0);
+        setCreatedAtRef('');
+        return;
+      }
+
+      const data = (res.data || {}) as ApiResponse;
+      const analises = Array.isArray(data.analises) ? data.analises : [];
+
+      setHasAnalises(analises.length > 0);
+      setAnalisesCount(analises.length);
+      setCreatedAtRef(data.created_at_ref || '');
+    } catch {
+      setHasAnalises(false);
+      setAnalisesCount(0);
+      setCreatedAtRef('');
+    } finally {
+      setLoading(false);
+    }
+  }, [props.userId, analysisType]);
+
+  const handleGenerate = async () => {
+    const safeUserId = String(props.userId || '').trim();
+    if (!safeUserId) return;
+
+    setGenerating(true);
+
+    try {
+      const params = new URLSearchParams({
+        user_id: safeUserId,
+      });
+
+      if (analysisType) {
+        params.set('type', analysisType);
+      }
+
+      const res = await services(`${generateEndpoint}?${params.toString()}`, {
+        method: 'GET',
+      });
 
       if (res.success) {
-        setHasAnalises(true);
-        showAlert(`Análise gerada com sucesso!`, 'success');
+        showAlert('Análise gerada com sucesso!', 'success');
+        await load();
       } else {
         showAlert(pickApiError(res.data), 'error');
       }
-    } catch (error) {
+    } catch {
       showAlert('Erro de conexão.', 'error');
     } finally {
       setGenerating(false);
@@ -132,7 +193,7 @@ export default function AnaliseCurvaABC_IA(props: Props) {
 
   useEffect(() => {
     load();
-  }, [props.userId]);
+  }, [load]);
 
   return (
     <>
@@ -154,7 +215,6 @@ export default function AnaliseCurvaABC_IA(props: Props) {
 
         <CardContent sx={{ p: 3 }}>
           <Stack spacing={2.5}>
-            {/* Header */}
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Stack direction="row" spacing={1.5} alignItems="center">
                 <Avatar
@@ -168,6 +228,7 @@ export default function AnaliseCurvaABC_IA(props: Props) {
                 >
                   <PsychologyIcon />
                 </Avatar>
+
                 <Box>
                   <Typography variant="h6" sx={{ fontWeight: 600, color: TEXT_DARK }}>
                     Insights com IA
@@ -177,17 +238,30 @@ export default function AnaliseCurvaABC_IA(props: Props) {
                   </Typography>
                 </Box>
               </Stack>
+
+              {hasAnalises && (
+                <Chip
+                  label={`${analisesCount} análise${analisesCount !== 1 ? 's' : ''}`}
+                  size="small"
+                  sx={{
+                    bgcolor: alpha(brand, 0.1),
+                    color: brand,
+                    fontWeight: 700,
+                  }}
+                />
+              )}
             </Stack>
 
             <Divider sx={{ borderColor: BORDER_LIGHT }} />
 
-            {/* Actions */}
             <Stack direction="row" spacing={1.5} justifyContent="flex-end" alignItems="center">
               <Button
                 variant="contained"
                 onClick={handleGenerate}
                 disabled={loading || generating}
-                startIcon={generating ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                startIcon={
+                  generating ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />
+                }
                 size="small"
                 sx={{
                   textTransform: 'none',
@@ -223,17 +297,53 @@ export default function AnaliseCurvaABC_IA(props: Props) {
               </Tooltip>
             </Stack>
 
-            {/* Status sutil */}
-            {hasAnalises && (
-              <Typography variant="caption" sx={{ color: GRAY_MAIN, textAlign: 'center', opacity: 0.7 }}>
-                Análises disponíveis para visualização
+            {loading && (
+              <Typography
+                variant="caption"
+                sx={{ color: GRAY_MAIN, textAlign: 'center', opacity: 0.8 }}
+              >
+                Verificando análises salvas...
+              </Typography>
+            )}
+
+            {!loading && hasAnalises && (
+              <Stack spacing={0.5}>
+                <Typography
+                  variant="caption"
+                  sx={{ color: GRAY_MAIN, textAlign: 'center', opacity: 0.85 }}
+                >
+                  Análises disponíveis para visualização
+                </Typography>
+
+                {createdAtRef && (
+                  <Typography
+                    variant="caption"
+                    sx={{ color: GRAY_MAIN, textAlign: 'center', opacity: 0.65 }}
+                  >
+                    Última geração: {new Date(createdAtRef).toLocaleString('pt-BR')}
+                  </Typography>
+                )}
+              </Stack>
+            )}
+
+            {!loading && !hasAnalises && (
+              <Typography
+                variant="caption"
+                sx={{ color: GRAY_MAIN, textAlign: 'center', opacity: 0.7 }}
+              >
+                Nenhuma análise salva ainda
               </Typography>
             )}
           </Stack>
         </CardContent>
       </Card>
 
-      <AppAlert open={alertOpen} message={alertMessage} severity={alertSeverity} onClose={() => setAlertOpen(false)} />
+      <AppAlert
+        open={alertOpen}
+        message={alertMessage}
+        severity={alertSeverity}
+        onClose={() => setAlertOpen(false)}
+      />
     </>
   );
 }

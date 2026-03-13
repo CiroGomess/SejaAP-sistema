@@ -34,7 +34,7 @@ def _fmt_pct(d: Decimal) -> str:
 
 def list_ticket_medio_produtos(
     current_user=None,
-    user_id: int | None = None,
+    user_id: str | None = None,
     page: int = 1,
     per_page: int = 10,
     # filtros
@@ -60,9 +60,10 @@ def list_ticket_medio_produtos(
 
     # ---- user_id obrigatório
     if user_id is None:
-        user_id = request.args.get("user_id", type=int)
+        user_id = request.args.get("user_id")
 
-    if not user_id or user_id <= 0:
+    user_id = str(user_id).strip() if user_id is not None else ""
+    if not user_id:
         return jsonify({"error": "Missing or invalid user_id"}), 400
 
     # ---- filtros opcionais
@@ -86,7 +87,7 @@ def list_ticket_medio_produtos(
         cur = conn.cursor()
 
         # ------------------------------------------------------------------
-        # 1. VALIDA USER E BUSCA O IPCA (AJUSTE SOLICITADO)
+        # 1. VALIDA USER E BUSCA O IPCA
         # ------------------------------------------------------------------
         cur.execute(
             """
@@ -106,10 +107,9 @@ def list_ticket_medio_produtos(
                     "details": "user_id must exist in public.clientes.id",
                 }
             ), 400
-        
-        # Recupera o valor do IPCA (pode ser NULL no banco)
+
         val_ipca_raw = row_cust[0]
-        customer_ipca_dec = _dec(val_ipca_raw, "0") # Converte para Decimal (0 se for None)
+        customer_ipca_dec = _dec(val_ipca_raw, "0")
 
         # ------------------------------------------------------------------
         # 2. WHERE DINÂMICO
@@ -132,7 +132,7 @@ def list_ticket_medio_produtos(
         where_sql = " WHERE " + " AND ".join(where_parts)
 
         # ------------------------------------------------------------------
-        # 3. CONTA TOTAL DE ITENS (PAGINAÇÃO)
+        # 3. CONTA TOTAL DE ITENS
         # ------------------------------------------------------------------
         cur.execute(
             f"""
@@ -149,14 +149,13 @@ def list_ticket_medio_produtos(
         total_items = cur.fetchone()[0] or 0
         total_pages = ceil(total_items / per_page) if total_items > 0 else 0
 
-        # Se página estourar limite, retorna vazio mas com o summary preenchido
         if total_pages > 0 and page > total_pages:
             return jsonify(
                 {
                     "items": [],
                     "summary": {
                         "user_id": user_id,
-                        "customer_ipca": _fmt_pct(customer_ipca_dec), # Envia o IPCA mesmo sem itens
+                        "customer_ipca": _fmt_pct(customer_ipca_dec),
                         "year_a": year_a,
                         "year_b": year_b,
                         "date_from": date_from,
@@ -206,7 +205,6 @@ def list_ticket_medio_produtos(
             val_a_d = _dec(val_a)
             val_b_d = _dec(val_b)
 
-            # --- Ticket Médio ---
             ticket_a = Decimal("0")
             ticket_b = Decimal("0")
 
@@ -215,15 +213,12 @@ def list_ticket_medio_produtos(
             if qtd_b_d > 0:
                 ticket_b = (val_b_d / qtd_b_d)
 
-            # --- Variações ---
             delta_qtd = (qtd_b_d - qtd_a_d)
 
-            # Variação Nominal (%)
             delta_ticket_pct = None
             if ticket_a > 0:
                 delta_ticket_pct = ((ticket_b - ticket_a) / ticket_a) * Decimal("100")
 
-            # Variação Real (%) = Nominal - IPCA
             ipca_delta_pct = None
             if delta_ticket_pct is not None:
                 ipca_delta_pct = delta_ticket_pct - customer_ipca_dec
@@ -233,17 +228,12 @@ def list_ticket_medio_produtos(
                     "rank": offset + idx + 1,
                     "produto_ou_servico": produto_ou_servico,
                     "nome_produto_ou_servico": nome_produto_ou_servico,
-
                     f"qtd_{year_a}": _fmt_qty(qtd_a_d),
                     f"qtd_{year_b}": _fmt_qty(qtd_b_d),
                     "delta_qtd": _fmt_qty(delta_qtd),
-
                     f"ticket_{year_a}": _fmt_money(ticket_a),
                     f"ticket_{year_b}": _fmt_money(ticket_b),
-
                     "delta_ticket_pct": _fmt_pct(delta_ticket_pct) if delta_ticket_pct is not None else None,
-                    
-                    # Envia o Ganho Real calculado com o IPCA do cliente
                     "ipca_delta_pct": _fmt_pct(ipca_delta_pct) if ipca_delta_pct is not None else None,
                 }
             )
@@ -253,7 +243,7 @@ def list_ticket_medio_produtos(
                 "items": items,
                 "summary": {
                     "user_id": user_id,
-                    "customer_ipca": _fmt_pct(customer_ipca_dec), # <--- IPCA NO JSON
+                    "customer_ipca": _fmt_pct(customer_ipca_dec),
                     "year_a": year_a,
                     "year_b": year_b,
                     "date_from": date_from,

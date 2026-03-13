@@ -29,13 +29,13 @@ import {
 } from '@mui/material';
 
 import {
-  AutoAwesome as AutoAwesomeIcon,
+
   Psychology as PsychologyIcon,
   Slideshow as SlideshowIcon,
   Settings as SettingsIcon,
-  Language as LanguageIcon,
+
   ColorLens as ColorLensIcon,
-  FormatQuote as FormatQuoteIcon,
+
   Close as CloseIcon,
   Tune as TuneIcon,
 } from '@mui/icons-material';
@@ -50,7 +50,6 @@ const GOLD_LIGHT = '#F5E6B8';
 const DARK_BG = '#0F172A';
 const WHITE = '#FFFFFF';
 const GRAY_MAIN = '#64748B';
-const GRAY_LIGHT = '#94A3B8';
 const BORDER_LIGHT = 'rgba(100, 116, 139, 0.2)';
 const TEXT_DARK = '#0F172A';
 
@@ -61,7 +60,7 @@ const STATUS_COLORS = {
 };
 
 interface Props {
-  userId: number;
+  userId: string;
   brand?: string;
   type?: 'produto' | 'clientes';
 }

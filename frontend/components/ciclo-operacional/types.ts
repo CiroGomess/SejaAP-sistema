@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 
 export type SelectedClient = {
-  id: number;
+  id: string;
   code: string;
   name: string;
 };
@@ -16,8 +16,8 @@ export type DragStep = {
 };
 
 export type CycleRecord = {
-  id: number;
-  user_id: number;
+  id: string;
+  user_id: string;
   step1: string;
   step2: string;
   step3: string;

@@ -53,19 +53,19 @@ def route_list_users(current_user):
     return list_users(current_user)
 
 
-@user_routes.get("/users/<int:user_id>")
+@user_routes.get("/users/<string:user_id>")
 @token_required
 def route_get_user(current_user, user_id):
     return get_user(current_user, user_id)
 
 
-@user_routes.put("/users/<int:user_id>")
+@user_routes.put("/users/<string:user_id>")
 @token_required
 def route_update_user(current_user, user_id):
     return update_user(current_user, user_id)
 
 
-@user_routes.delete("/users/<int:user_id>")
+@user_routes.delete("/users/<string:user_id>")
 @token_required
 def route_delete_user(current_user, user_id):
     return delete_user(current_user, user_id)

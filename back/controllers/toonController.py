@@ -1,17 +1,16 @@
 # toonController.py
 #
-# GET /toon?user_id=10
+# GET /toon?user_id=<hash>
 # - Detecta automaticamente o ano mais recente com dados do cliente (public.receita_user.data_emissao)
 # - Calcula Curva ABC por produto/serviço (agrupado) nesse ano
 # - Retorna TUDO (sem paginação) em formato TOON
 
-import os
 from decimal import Decimal
 from flask import request, jsonify
 from config.db import get_connection
 
 
-def _customer_id_exists(cur, customer_id: int) -> bool:
+def _customer_id_exists(cur, customer_id: str) -> bool:
     cur.execute(
         """
         SELECT 1
@@ -32,7 +31,7 @@ def _classifica_abc(cum_pct: Decimal, a_limit=Decimal("0.80"), b_limit=Decimal("
     return "C"
 
 
-def _find_most_recent_year(cur, user_id: int) -> int | None:
+def _find_most_recent_year(cur, user_id: str) -> int | None:
     cur.execute(
         """
         SELECT MAX(EXTRACT(YEAR FROM data_emissao))::int
@@ -45,11 +44,11 @@ def _find_most_recent_year(cur, user_id: int) -> int | None:
     return int(y) if y else None
 
 
-def toon_abc_ano_recente(current_user=None, user_id: int | None = None):
+def toon_abc_ano_recente(current_user=None, user_id: str | None = None):
     """
     Querystring:
-      /toon?user_id=10
-      /toon?user_id=10&a_limit=0.8&b_limit=0.95
+      /toon?user_id=<hash>
+      /toon?user_id=<hash>&a_limit=0.8&b_limit=0.95
 
     Resposta (TOON):
       {
@@ -61,12 +60,10 @@ def toon_abc_ano_recente(current_user=None, user_id: int | None = None):
     """
 
     if user_id is None:
-        try:
-            user_id = int(request.args.get("user_id") or 0)
-        except Exception:
-            user_id = 0
+        user_id = request.args.get("user_id")
 
-    if not user_id or user_id <= 0:
+    user_id = str(user_id).strip() if user_id is not None else ""
+    if not user_id:
         return jsonify({"error": "Missing or invalid user_id"}), 400
 
     # limites ABC opcionais via querystring
@@ -77,7 +74,6 @@ def toon_abc_ano_recente(current_user=None, user_id: int | None = None):
         a_limit_dec = Decimal("0.80")
         b_limit_dec = Decimal("0.95")
 
-    # clamp
     if a_limit_dec <= 0:
         a_limit_dec = Decimal("0.80")
     if b_limit_dec <= a_limit_dec:
@@ -165,9 +161,9 @@ def toon_abc_ano_recente(current_user=None, user_id: int | None = None):
             produto_ou_servico, nome_produto_ou_servico, total_valor_item = r
             total_item_dec = Decimal(str(total_valor_item))
 
-            pct = (total_item_dec / total_valor_dec)  # 0..1
+            pct = (total_item_dec / total_valor_dec)
             cum_running += total_item_dec
-            cum_pct = (cum_running / total_valor_dec)  # 0..1
+            cum_pct = (cum_running / total_valor_dec)
 
             rows.append(
                 {

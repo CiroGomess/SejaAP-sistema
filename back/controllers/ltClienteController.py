@@ -5,8 +5,9 @@ from math import ceil
 from config.db import get_connection
 
 
-def list_lt_clientes(current_user=None, user_id: int = 0):
-    if not user_id or int(user_id) <= 0:
+def list_lt_clientes(current_user=None, user_id: str = ""):
+    user_id = str(user_id).strip()
+    if not user_id:
         return jsonify({"error": "Invalid user_id"}), 400
 
     # paginação
@@ -30,7 +31,7 @@ def list_lt_clientes(current_user=None, user_id: int = 0):
         conn = get_connection()
         cur = conn.cursor()
 
-        # Base filtro reaproveitável (garante consistência em todas as queries)
+        # Base filtro reaproveitável
         base_where = """
             WHERE user_id = %s
               AND data_emissao IS NOT NULL
@@ -38,7 +39,7 @@ def list_lt_clientes(current_user=None, user_id: int = 0):
               AND TRIM(nome_cliente) <> ''
         """
 
-        # 1) TOTAL de clientes únicos (para paginação)
+        # 1) TOTAL de clientes únicos
         cur.execute(
             f"""
             SELECT COUNT(*)::int
@@ -49,12 +50,12 @@ def list_lt_clientes(current_user=None, user_id: int = 0):
               GROUP BY nome_cliente
             ) t;
             """,
-            (int(user_id),),
+            (user_id,),
         )
         total_items = cur.fetchone()[0] or 0
         total_pages = int(ceil(total_items / per_page)) if total_items > 0 else 0
 
-        # 2) Cliente com MAIOR LT (GLOBAL)
+        # 2) Cliente com MAIOR LT
         cur.execute(
             f"""
             SELECT
@@ -66,14 +67,13 @@ def list_lt_clientes(current_user=None, user_id: int = 0):
             ORDER BY lt_dias DESC, nome_cliente ASC
             LIMIT 1;
             """,
-            (int(user_id),),
+            (user_id,),
         )
         row_max = cur.fetchone()
         cliente_maior_lt = row_max[0] if row_max else None
         maior_lt_dias = int(row_max[1]) if row_max and row_max[1] is not None else None
 
-        # 3) Cliente com MENOR LT (GLOBAL)
-        # Observação: muitos clientes terão lt_dias=0 (1 compra só ou mesma data).
+        # 3) Cliente com MENOR LT
         cur.execute(
             f"""
             SELECT
@@ -85,13 +85,13 @@ def list_lt_clientes(current_user=None, user_id: int = 0):
             ORDER BY lt_dias ASC, nome_cliente ASC
             LIMIT 1;
             """,
-            (int(user_id),),
+            (user_id,),
         )
         row_min = cur.fetchone()
         cliente_menor_lt = row_min[0] if row_min else None
         menor_lt_dias = int(row_min[1]) if row_min and row_min[1] is not None else None
 
-        # 4) LISTA paginada (dados da página)
+        # 4) LISTA paginada
         cur.execute(
             f"""
             SELECT
@@ -112,7 +112,7 @@ def list_lt_clientes(current_user=None, user_id: int = 0):
             ORDER BY lt_dias DESC, compras_total DESC, nome_cliente ASC
             LIMIT %s OFFSET %s;
             """,
-            (int(user_id), int(per_page), int(offset)),
+            (user_id, int(per_page), int(offset)),
         )
 
         rows = cur.fetchall()
@@ -133,12 +133,10 @@ def list_lt_clientes(current_user=None, user_id: int = 0):
 
         payload = {
             "resumo": {
-                "user_id": int(user_id),
+                "user_id": user_id,
                 "clientes_unicos": int(total_items),
-
                 "cliente_maior_lt": cliente_maior_lt,
                 "maior_lt_dias": maior_lt_dias,
-
                 "cliente_menor_lt": cliente_menor_lt,
                 "menor_lt_dias": menor_lt_dias,
             },
