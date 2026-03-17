@@ -17,7 +17,7 @@ import ReceitaChart from '@/components/dash-cliente/ReceitaChart';
 import AnaliseABC from '@/components/dash-cliente/AnaliseABC';
 import TicketMedio from '@/components/dash-cliente/TicketMedio';
 import AnaliseContabil from '@/components/dash-cliente/AnaliseContabil';
-import InsightsRapidos from '@/components/dash-cliente/InsightsRapidos';
+// import InsightsRapidos from '@/components/dash-cliente/InsightsRapidos';
 import AppAlert, { AlertType } from '@/components/AppAlert';
 
 const readEndpoint = '/dashcliente';
@@ -310,7 +310,20 @@ export default function DashClientePage() {
     }, []);
 
     const loadDashboard = useCallback(async () => {
-        const safeUserId = String(selectedClient?.id || '').trim();
+        let safeUserId = String(selectedClient?.id || '').trim();
+
+        if (!safeUserId) {
+            try {
+                const storedSelectedClient = localStorage.getItem('selectedClient');
+
+                if (storedSelectedClient) {
+                    const parsedClient = JSON.parse(storedSelectedClient);
+                    safeUserId = String(parsedClient?.id || '').trim();
+                }
+            } catch (error) {
+                console.error('Erro ao ler selectedClient do localStorage:', error);
+            }
+        }
 
         if (!safeUserId) {
             return;
@@ -333,6 +346,7 @@ export default function DashClientePage() {
                     res?.data?.error ||
                     res?.message ||
                     'Não foi possível carregar o dashboard.';
+
                 showAlert(message, 'error');
                 return;
             }
@@ -358,15 +372,15 @@ export default function DashClientePage() {
                 totalProdutos: Number(cards.produtos_servicos || 0),
                 melhorMes: grafico.melhor_mes
                     ? {
-                          mes: meses[grafico.melhor_mes.mes] || '',
-                          valor: Number(grafico.melhor_mes.valor_total || 0),
-                      }
+                        mes: meses[grafico.melhor_mes.mes] || '',
+                        valor: Number(grafico.melhor_mes.valor_total || 0),
+                    }
                     : null,
                 piorMes: grafico.pior_mes
                     ? {
-                          mes: meses[grafico.pior_mes.mes] || '',
-                          valor: Number(grafico.pior_mes.valor_total || 0),
-                      }
+                        mes: meses[grafico.pior_mes.mes] || '',
+                        valor: Number(grafico.pior_mes.valor_total || 0),
+                    }
                     : null,
             });
 
@@ -419,14 +433,14 @@ export default function DashClientePage() {
                 variacaoMediaVsAnoAnterior: Number(ticketDashboard.variacao_media_vs_ano_anterior || 0),
                 top5Produtos: Array.isArray(ticketDashboard.top_5_produtos)
                     ? ticketDashboard.top_5_produtos.map((item) => ({
-                          rank: Number(item.rank || 0),
-                          produto: item.nome_produto_ou_servico || '-',
-                          ticket: Number(item.ticket_medio || 0),
-                          variacao:
-                              item.variacao_percentual !== null && item.variacao_percentual !== undefined
-                                  ? Number(item.variacao_percentual)
-                                  : null,
-                      }))
+                        rank: Number(item.rank || 0),
+                        produto: item.nome_produto_ou_servico || '-',
+                        ticket: Number(item.ticket_medio || 0),
+                        variacao:
+                            item.variacao_percentual !== null && item.variacao_percentual !== undefined
+                                ? Number(item.variacao_percentual)
+                                : null,
+                    }))
                     : [],
             });
 
@@ -441,7 +455,7 @@ export default function DashClientePage() {
         } finally {
             setLoading(false);
         }
-    }, [selectedClient?.id, selectedYear]);
+    }, [selectedClient?.id, selectedYear, readEndpoint]);
 
     useEffect(() => {
         if (!selectedClient?.id) return;
@@ -521,7 +535,7 @@ export default function DashClientePage() {
                         </div>
 
                         <AnaliseContabil data={analiseContabilData} />
-                        <InsightsRapidos />
+                        {/* <InsightsRapidos /> */}
 
                         <Box sx={{ mt: 4, textAlign: 'center' }}>
                             <Typography variant="caption" sx={{ color: '#94A3B8' }}>
