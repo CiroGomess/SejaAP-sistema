@@ -19,7 +19,8 @@ from routes import (
     contabilidade_routes,
     client_cycle_routes,
     lt_clientes_routes,
-    ticket_medio_insights_routes
+    ticket_medio_insights_routes,
+    dashcliente_routes,
 )
 
 app = Flask(__name__)
@@ -67,6 +68,7 @@ app.register_blueprint(contabilidade_routes)
 app.register_blueprint(client_cycle_routes)
 app.register_blueprint(lt_clientes_routes)
 app.register_blueprint(ticket_medio_insights_routes)
+app.register_blueprint(dashcliente_routes)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

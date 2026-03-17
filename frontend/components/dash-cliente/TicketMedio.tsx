@@ -9,15 +9,15 @@ import {
     Stack,
     Avatar,
     alpha,
-    Grid,
+    Grid2 as Grid,
     Paper,
     Chip,
+    Tooltip as MuiTooltip,
 } from '@mui/material';
 import {
     AttachMoney as AttachMoneyIcon,
     TrendingUp as TrendingUpIcon,
     TrendingDown as TrendingDownIcon,
-
 } from '@mui/icons-material';
 import {
     BarChart,
@@ -29,13 +29,18 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 
-const dadosTicket = [
-    { produto: 'Produto A', ticket: 245.67, variacao: 12.3 },
-    { produto: 'Produto B', ticket: 189.34, variacao: 8.5 },
-    { produto: 'Produto C', ticket: 156.78, variacao: -3.2 },
-    { produto: 'Produto D', ticket: 134.56, variacao: 15.7 },
-    { produto: 'Produto E', ticket: 98.45, variacao: -5.1 },
-];
+type TicketMedioProps = {
+    data: {
+        mediaTop5: number;
+        variacaoMediaVsAnoAnterior: number;
+        top5Produtos: Array<{
+            rank: number;
+            produto: string;
+            ticket: number;
+            variacao: number | null;
+        }>;
+    };
+};
 
 function money(value: number): string {
     return value.toLocaleString('pt-BR', {
@@ -46,77 +51,228 @@ function money(value: number): string {
     });
 }
 
-export default function TicketMedio() {
-    return (
-        <Card elevation={0} sx={{ borderRadius: 4, border: '1px solid rgba(230, 201, 105, 0.1)', bgcolor: '#FFFFFF', overflow: 'hidden',  width: '49%' }}>
-            <Box sx={{ height: 6, background: `linear-gradient(90deg, #E6C969, #F5E6B8)` }} />
+export default function TicketMedio({ data }: TicketMedioProps) {
+    const dadosTicket = data?.top5Produtos || [];
+    const variacaoMedia = Number(data?.variacaoMediaVsAnoAnterior || 0);
+    const variacaoPositiva = variacaoMedia >= 0;
 
-            <CardContent sx={{ p: 3 }}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+    return (
+        <Card
+            elevation={0}
+            sx={{
+                borderRadius: 3,
+                border: '1px solid #E2E8F0',
+                bgcolor: '#FFFFFF',
+                overflow: 'hidden',
+                width: '50%',
+                height: 'fit-content',
+            }}
+        >
+            {/* Header */}
+            <Box sx={{ p: 3, pb: 0 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
                     <Stack direction="row" spacing={1.5} alignItems="center">
-                        <Avatar sx={{ bgcolor: alpha('#E6C969', 0.1), color: '#E6C969', width: 40, height: 40 }}>
+                        <Avatar
+                            sx={{
+                                bgcolor: alpha('#E6C969', 0.1),
+                                color: '#E6C969',
+                                width: 40,
+                                height: 40,
+                            }}
+                        >
                             <AttachMoneyIcon />
                         </Avatar>
                         <Box>
-                            <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A' }}>
+                            <Typography variant="h6" sx={{ fontWeight: 600, color: '#0F172A' }}>
                                 Ticket Médio
                             </Typography>
                             <Typography variant="body2" sx={{ color: '#64748B' }}>
-                                Top 5 produtos • {money(185.45)} média
+                                Top 5 produtos • {money(data?.mediaTop5 || 0)} média
                             </Typography>
                         </Box>
                     </Stack>
 
                     <Chip
-                        label="+8.2% vs ano anterior"
+                        label={`${variacaoPositiva ? '+' : ''}${variacaoMedia.toFixed(1)}%`}
                         size="small"
-                        sx={{ bgcolor: alpha('#10B981', 0.1), color: '#10B981', fontWeight: 600 }}
+                        icon={variacaoPositiva ? <TrendingUpIcon /> : <TrendingDownIcon />}
+                        sx={{
+                            bgcolor: alpha(variacaoPositiva ? '#10B981' : '#EF4444', 0.1),
+                            color: variacaoPositiva ? '#10B981' : '#EF4444',
+                            fontWeight: 500,
+                            '& .MuiChip-icon': {
+                                color: 'inherit',
+                                fontSize: 16,
+                            },
+                        }}
                     />
                 </Stack>
 
-                <Box sx={{ width: '100%', height: 250 }}>
-                    <ResponsiveContainer>
-                        <BarChart data={dadosTicket} layout="vertical">
-                            <CartesianGrid strokeDasharray="3 3" stroke={alpha('#64748B', 0.1)} horizontal={false} />
-                            <XAxis type="number" tickFormatter={(v) => money(v).replace('R$', '')} stroke="#64748B" />
-                            <YAxis dataKey="produto" type="category" width={80} stroke="#64748B" />
-                            <Tooltip
-                                formatter={(value: number) => money(value)}
-                                contentStyle={{
-                                    backgroundColor: '#0F172A',
-                                    border: '1px solid rgba(230, 201, 105, 0.1)',
-                                    borderRadius: 8,
-                                    color: '#FFFFFF',
-                                }}
-                            />
-                            <Bar dataKey="ticket" fill="#E6C969" radius={[0, 4, 4, 0]} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </Box>
+                <Typography variant="caption" sx={{ color: '#64748B', display: 'block', mb: 1 }}>
+                    vs ano anterior
+                </Typography>
+            </Box>
 
-                <Grid container spacing={2} sx={{ mt: 2 }}>
-                    {dadosTicket.slice(0, 3).map((item, index) => (
-                        <Grid size={{ xs: 12, sm: 4 }} key={index}>
-                            <Paper elevation={0} sx={{ p: 1.5, borderRadius: 2, border: '1px solid rgba(230, 201, 105, 0.1)' }}>
+            {/* Gráfico */}
+            <Box sx={{ height: 240, px: 3, py: 2 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                        data={dadosTicket}
+                        layout="vertical"
+                        margin={{ top: 0, right: 0, left: 20, bottom: 0 }}
+                    >
+                        <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke={alpha('#64748B', 0.1)}
+                            horizontal={false}
+                        />
+                        <XAxis
+                            type="number"
+                            tickFormatter={(v) => money(Number(v)).replace('R$', '').trim()}
+                            stroke="#94A3B8"
+                            fontSize={11}
+                        />
+                        <YAxis
+                            dataKey="produto"
+                            type="category"
+                            width={140}
+                            stroke="#94A3B8"
+                            tick={({ x, y, payload }) => {
+                                const produto = String(payload.value);
+                                const codigo = produto.match(/\[\d+\]/)?.[0] || '';
+                                const nome = produto.replace(/\[\d+\]\s*/, '');
+
+                                return (
+                                    <g transform={`translate(${x},${y})`}>
+                                        <text
+                                            x={-10}
+                                            y={0}
+                                            dy={4}
+                                            textAnchor="end"
+                                            fill="#0F172A"
+                                            fontSize={11}
+                                            fontWeight={500}
+                                        >
+                                            <tspan>{codigo}</tspan>
+                                            <tspan dx={5} fill="#64748B" fontSize={10}>
+                                                {nome.length > 20 ? `${nome.substring(0, 20)}...` : nome}
+                                            </tspan>
+                                        </text>
+                                    </g>
+                                );
+                            }}
+                            interval={0}
+                        />
+                        <Tooltip
+                            formatter={(value: number) => money(Number(value))}
+                            labelFormatter={(label) => {
+                                const nome = String(label).replace(/\[\d+\]\s*/, '');
+                                return nome;
+                            }}
+                            contentStyle={{
+                                backgroundColor: '#FFFFFF',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: 8,
+                                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+                                fontSize: 12,
+                            }}
+                        />
+                        <Bar 
+                            dataKey="ticket" 
+                            fill="#E6C969" 
+                            radius={[0, 4, 4, 0]} 
+                            maxBarSize={20}
+                        />
+                    </BarChart>
+                </ResponsiveContainer>
+            </Box>
+
+            {/* Lista de produtos */}
+            <Box sx={{ p: 3, pt: 0 }}>
+                <Typography variant="subtitle2" sx={{ color: '#0F172A', fontWeight: 600, mb: 2 }}>
+                    Detalhamento
+                </Typography>
+
+                <Stack spacing={1.5}>
+                    {dadosTicket.map((item, index) => {
+                        const variacao = item.variacao ?? 0;
+                        const positiva = variacao >= 0;
+                        const codigo = item.produto.match(/\[\d+\]/)?.[0] || '';
+                        const nome = item.produto.replace(/\[\d+\]\s*/, '');
+
+                        return (
+                            <Paper
+                                key={index}
+                                elevation={0}
+                                sx={{
+                                    p: 1.5,
+                                    borderRadius: 2,
+                                    border: '1px solid #E2E8F0',
+                                    bgcolor: index % 2 === 0 ? '#FFFFFF' : '#F8FAFC',
+                                }}
+                            >
                                 <Stack direction="row" justifyContent="space-between" alignItems="center">
-                                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#0F172A' }}>{item.produto}</Typography>
-                                    <Chip
-                                        icon={item.variacao > 0 ? <TrendingUpIcon /> : <TrendingDownIcon />}
-                                        label={`${item.variacao > 0 ? '+' : ''}${item.variacao}%`}
-                                        size="small"
-                                        sx={{
-                                            bgcolor: alpha(item.variacao > 0 ? '#10B981' : '#EF4444', 0.1),
-                                            color: item.variacao > 0 ? '#10B981' : '#EF4444',
-                                            height: 20,
-                                        }}
-                                    />
+                                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                            <Typography
+                                                variant="caption"
+                                                sx={{
+                                                    color: '#E6C969',
+                                                    fontWeight: 600,
+                                                    fontSize: 11,
+                                                }}
+                                            >
+                                                {codigo}
+                                            </Typography>
+                                            <MuiTooltip title={nome} arrow>
+                                                <Typography
+                                                    variant="body2"
+                                                    sx={{
+                                                        fontWeight: 500,
+                                                        color: '#0F172A',
+                                                        whiteSpace: 'nowrap',
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                    }}
+                                                >
+                                                    {nome}
+                                                </Typography>
+                                            </MuiTooltip>
+                                        </Stack>
+                                        <Typography variant="caption" sx={{ color: '#64748B' }}>
+                                            Rank #{index + 1}
+                                        </Typography>
+                                    </Box>
+
+                                    <Stack direction="row" spacing={2} alignItems="center">
+                                        <Typography
+                                            variant="body2"
+                                            sx={{
+                                                fontWeight: 600,
+                                                color: '#0F172A',
+                                            }}
+                                        >
+                                            {money(item.ticket)}
+                                        </Typography>
+                                        <Chip
+                                            label={`${positiva ? '+' : ''}${variacao.toFixed(1)}%`}
+                                            size="small"
+                                            sx={{
+                                                bgcolor: alpha(positiva ? '#10B981' : '#EF4444', 0.1),
+                                                color: positiva ? '#10B981' : '#EF4444',
+                                                height: 20,
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                minWidth: 50,
+                                            }}
+                                        />
+                                    </Stack>
                                 </Stack>
-                                <Typography variant="body2" sx={{ fontWeight: 700, color: '#E6C969' }}>{money(item.ticket)}</Typography>
                             </Paper>
-                        </Grid>
-                    ))}
-                </Grid>
-            </CardContent>
+                        );
+                    })}
+                </Stack>
+            </Box>
         </Card>
     );
 }

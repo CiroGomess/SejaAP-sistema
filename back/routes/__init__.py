@@ -16,6 +16,7 @@ from .contabilidade import contabilidade_routes
 from .client_cycle import client_cycle_routes
 from .lt_clientes import lt_clientes_routes
 from .ticket_medio_insights import ticket_medio_insights_routes
+from .dashcliente import dashcliente_routes
 
 
 
@@ -38,5 +39,6 @@ __all__ = [
     "contabilidade_routes",
     "client_cycle_routes",
     "lt_clientes_routes",
+    "dashcliente_routes",
     "lt_clientes_routeticket_medio_insights_routes",
 ]

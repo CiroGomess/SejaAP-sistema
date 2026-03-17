@@ -53,6 +53,89 @@ const BORDER_LIGHT = 'rgba(0, 0, 0, 0.08)';
 const BORDER_FOCUS = 'rgba(184, 134, 11, 0.3)';
 
 /* =======================
+   VALIDAÇÕES
+======================= */
+function onlyNumbers(v: string) {
+    return (v || '').replace(/\D/g, '');
+}
+
+function validateCPF(cpf: string) {
+    const clean = onlyNumbers(cpf);
+
+    if (clean.length !== 11) return false;
+    if (/^(\d)\1+$/.test(clean)) return false;
+
+    let sum = 0;
+    for (let i = 0; i < 9; i += 1) {
+        sum += parseInt(clean.charAt(i), 10) * (10 - i);
+    }
+
+    let rev = 11 - (sum % 11);
+    if (rev === 10 || rev === 11) rev = 0;
+    if (rev !== parseInt(clean.charAt(9), 10)) return false;
+
+    sum = 0;
+    for (let i = 0; i < 10; i += 1) {
+        sum += parseInt(clean.charAt(i), 10) * (11 - i);
+    }
+
+    rev = 11 - (sum % 11);
+    if (rev === 10 || rev === 11) rev = 0;
+
+    return rev === parseInt(clean.charAt(10), 10);
+}
+
+function validateCNPJ(cnpj: string) {
+    const clean = onlyNumbers(cnpj);
+
+    if (clean.length !== 14) return false;
+    if (/^(\d)\1+$/.test(clean)) return false;
+
+    const calc = (base: string, factors: number[]) => {
+        let sum = 0;
+        for (let i = 0; i < factors.length; i += 1) {
+            sum += parseInt(base.charAt(i), 10) * factors[i];
+        }
+        const rest = sum % 11;
+        return rest < 2 ? 0 : 11 - rest;
+    };
+
+    const base12 = clean.substring(0, 12);
+    const digit1 = calc(base12, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+    const base13 = `${base12}${digit1}`;
+    const digit2 = calc(base13, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+
+    return clean === `${base12}${digit1}${digit2}`;
+}
+
+function validateDocument(doc: string) {
+    const clean = onlyNumbers(doc);
+
+    if (clean.length === 11) return validateCPF(clean);
+    if (clean.length === 14) return validateCNPJ(clean);
+
+    return false;
+}
+
+function validatePhone(phone: string) {
+    const clean = onlyNumbers(phone);
+    return clean.length === 10 || clean.length === 11;
+}
+
+function validateEmail(email: string) {
+    const value = String(email || '').trim();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function validateUF(state: string) {
+    return /^[A-Z]{2}$/.test(String(state || '').trim().toUpperCase());
+}
+
+function validateCEP(cep: string) {
+    return onlyNumbers(cep).length === 8;
+}
+
+/* =======================
    Tipos
 ======================= */
 export type CustomerStatus = 'active' | 'pending' | 'inactive';
@@ -165,7 +248,15 @@ const inputSx = {
 };
 
 // Componente para cabeçalhos de seção
-const SectionHeader = ({ title, subtitle, icon }: { title: string; subtitle: string; icon: React.ReactNode }) => (
+const SectionHeader = ({
+    title,
+    subtitle,
+    icon,
+}: {
+    title: string;
+    subtitle: string;
+    icon: React.ReactNode;
+}) => (
     <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 3 }}>
         <Avatar
             sx={{
@@ -222,10 +313,17 @@ const IconTextField = ({ icon, label, value, onChange, ...props }: any) => (
     />
 );
 
-export default function CustomerModal({ open, editing, form, saving, onClose, onSave, onChange }: Props) {
+export default function CustomerModal({
+    open,
+    editing,
+    form,
+    saving,
+    onClose,
+    onSave,
+    onChange,
+}: Props) {
     const isCreateMode = !editing;
 
-    // ✅ DEFAULT SEGURO com todos os campos necessários
     const safeUser: UserForm = useMemo(
         () => ({
             username: form?.user?.username || '',
@@ -240,7 +338,6 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
         [form?.user, form?.email, form?.first_name, form?.last_name]
     );
 
-    // ✅ Atualizar user sem quebrar o form
     function patchUser(patch: Partial<UserForm>) {
         onChange({
             user: {
@@ -250,7 +347,6 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
         });
     }
 
-    // ✅ Atualiza automaticamente email/nome no user quando os campos principais mudam
     React.useEffect(() => {
         if (isCreateMode && safeUser) {
             patchUser({
@@ -259,22 +355,56 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                 last_name: form.last_name,
             });
         }
-    }, [form.email, form.first_name, form.last_name]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [form.email, form.first_name, form.last_name, isCreateMode]);
 
     const headerSubtitle = editing
-        ? `ID: ${editing.code} • Última atualização: ${editing.updated_at ? new Date(editing.updated_at).toLocaleDateString('pt-BR') : '-'}`
+        ? `ID: ${editing.code} • Última atualização: ${
+              editing.updated_at ? new Date(editing.updated_at).toLocaleDateString('pt-BR') : '-'
+          }`
         : 'Preencha os dados abaixo para cadastrar um novo cliente';
 
-    // Validação dos campos obrigatórios
-    const missingRequiredData = isCreateMode && (
+    // Validações
+    const invalidEmail = !!form.email?.trim() && !validateEmail(form.email);
+    const invalidDocument = !!form.document?.trim() && !validateDocument(form.document);
+    const invalidPhone = !!form.phone?.trim() && !validatePhone(form.phone);
+    const invalidCEP = !!form.cep?.trim() && !validateCEP(form.cep);
+    const invalidUF = !!form.state?.trim() && !validateUF(form.state);
+
+    // Obrigatórios
+    const missingPersonalRequired =
         !form.first_name?.trim() ||
         !form.last_name?.trim() ||
         !form.email?.trim() ||
         !form.document?.trim() ||
         !form.phone?.trim() ||
-        !safeUser.username?.trim() ||
-        !safeUser.password?.trim()
-    );
+        !form.status?.trim();
+
+    const missingAddressRequired =
+        !form.cep?.trim() ||
+        !form.street?.trim() ||
+        !form.number?.trim() ||
+        !form.neighborhood?.trim() ||
+        !form.city?.trim() ||
+        !form.state?.trim();
+
+    const missingSystemAccessRequired =
+        isCreateMode &&
+        (!safeUser.username?.trim() || !safeUser.password?.trim());
+
+    const hasValidationErrors =
+        invalidEmail ||
+        invalidDocument ||
+        invalidPhone ||
+        invalidCEP ||
+        invalidUF;
+
+    const disableSave =
+        saving ||
+        missingPersonalRequired ||
+        missingAddressRequired ||
+        !!missingSystemAccessRequired ||
+        hasValidationErrors;
 
     return (
         <Dialog
@@ -310,7 +440,14 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                         >
                             {editing ? 'Editar Cliente' : 'Novo Cliente'}
                         </Typography>
-                        <Typography sx={{ mt: 0.5, color: alpha(WHITE, 0.7), fontSize: '0.95rem', fontWeight: 400 }}>
+                        <Typography
+                            sx={{
+                                mt: 0.5,
+                                color: alpha(WHITE, 0.7),
+                                fontSize: '0.95rem',
+                                fontWeight: 400,
+                            }}
+                        >
                             {headerSubtitle}
                         </Typography>
                     </Box>
@@ -336,12 +473,22 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                 sx={{
                     p: 3,
                     '&::-webkit-scrollbar': { width: '8px' },
-                    '&::-webkit-scrollbar-thumb': { background: alpha(GRAY_MAIN, 0.3), borderRadius: '4px' },
+                    '&::-webkit-scrollbar-thumb': {
+                        background: alpha(GRAY_MAIN, 0.3),
+                        borderRadius: '4px',
+                    },
                 }}
             >
                 {/* === SEÇÃO 1: DADOS PESSOAIS === */}
-                <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2, border: `1px solid ${BORDER_LIGHT}` }}>
-                    <SectionHeader title="Dados Pessoais" subtitle="Informações básicas do cliente" icon={<PersonIcon />} />
+                <Paper
+                    elevation={0}
+                    sx={{ p: 3, mb: 3, borderRadius: 2, border: `1px solid ${BORDER_LIGHT}` }}
+                >
+                    <SectionHeader
+                        title="Dados Pessoais"
+                        subtitle="Informações básicas do cliente"
+                        icon={<PersonIcon />}
+                    />
 
                     <Grid container spacing={2.5}>
                         <Grid size={{ xs: 12, md: 6 }}>
@@ -352,6 +499,8 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                 onChange={(e: any) => onChange({ first_name: e.target.value })}
                                 autoFocus
                                 required
+                                error={!form.first_name?.trim()}
+                                helperText={!form.first_name?.trim() ? 'Nome é obrigatório' : ' '}
                             />
                         </Grid>
 
@@ -362,6 +511,8 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                 value={form.last_name}
                                 onChange={(e: any) => onChange({ last_name: e.target.value })}
                                 required
+                                error={!form.last_name?.trim()}
+                                helperText={!form.last_name?.trim() ? 'Sobrenome é obrigatório' : ' '}
                             />
                         </Grid>
 
@@ -373,6 +524,14 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                 onChange={(e: any) => onChange({ email: e.target.value })}
                                 type="email"
                                 required
+                                error={!form.email?.trim() || invalidEmail}
+                                helperText={
+                                    !form.email?.trim()
+                                        ? 'E-mail é obrigatório'
+                                        : invalidEmail
+                                          ? 'Digite um e-mail válido'
+                                          : ' '
+                                }
                             />
                         </Grid>
 
@@ -382,8 +541,15 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                 label="CPF/CNPJ *"
                                 value={form.document}
                                 onChange={(e: any) => onChange({ document: e.target.value })}
-                                helperText="Apenas números"
                                 required
+                                error={!form.document?.trim() || invalidDocument}
+                                helperText={
+                                    !form.document?.trim()
+                                        ? 'CPF/CNPJ é obrigatório'
+                                        : invalidDocument
+                                          ? 'CPF ou CNPJ inválido'
+                                          : 'Digite CPF (11) ou CNPJ (14)'
+                                }
                             />
                         </Grid>
 
@@ -393,8 +559,15 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                 label="Telefone *"
                                 value={form.phone}
                                 onChange={(e: any) => onChange({ phone: e.target.value })}
-                                helperText="(00) 00000-0000"
                                 required
+                                error={!form.phone?.trim() || invalidPhone}
+                                helperText={
+                                    !form.phone?.trim()
+                                        ? 'Telefone é obrigatório'
+                                        : invalidPhone
+                                          ? 'Telefone inválido'
+                                          : '(DDD) 00000-0000'
+                                }
                             />
                         </Grid>
 
@@ -403,19 +576,28 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                 select
                                 label="WhatsApp"
                                 value={form.is_whatsapp ? 'yes' : 'no'}
-                                onChange={(e: any) => onChange({ is_whatsapp: e.target.value === 'yes' })}
+                                onChange={(e: any) =>
+                                    onChange({ is_whatsapp: e.target.value === 'yes' })
+                                }
                                 fullWidth
                                 InputProps={{
                                     startAdornment: (
                                         <InputAdornment position="start">
-                                            <WhatsAppIcon sx={{ color: form.is_whatsapp ? '#25D366' : GRAY_MAIN }} />
+                                            <WhatsAppIcon
+                                                sx={{
+                                                    color: form.is_whatsapp ? '#25D366' : GRAY_MAIN,
+                                                }}
+                                            />
                                         </InputAdornment>
                                     ),
                                 }}
                                 sx={inputSx}
+                                helperText=" "
                             >
                                 <MenuItem value="yes">Sim, este número tem WhatsApp</MenuItem>
-                                <MenuItem value="no">Não, apenas telefone convencional</MenuItem>
+                                <MenuItem value="no">
+                                    Não, apenas telefone convencional
+                                </MenuItem>
                             </TextField>
                         </Grid>
 
@@ -424,15 +606,24 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                 select
                                 label="Status *"
                                 value={form.status}
-                                onChange={(e: any) => onChange({ status: e.target.value as CustomerStatus })}
+                                onChange={(e: any) =>
+                                    onChange({ status: e.target.value as CustomerStatus })
+                                }
                                 fullWidth
                                 required
+                                error={!form.status?.trim()}
+                                helperText={!form.status?.trim() ? 'Status é obrigatório' : ' '}
                                 InputProps={{
                                     startAdornment: (
                                         <InputAdornment position="start">
                                             <FlagIcon
                                                 sx={{
-                                                    color: form.status === 'active' ? '#10B981' : form.status === 'pending' ? '#F59E0B' : '#EF4444',
+                                                    color:
+                                                        form.status === 'active'
+                                                            ? '#10B981'
+                                                            : form.status === 'pending'
+                                                              ? '#F59E0B'
+                                                              : '#EF4444',
                                                 }}
                                             />
                                         </InputAdornment>
@@ -440,13 +631,22 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                 }}
                                 sx={inputSx}
                             >
-                                <MenuItem value="active" sx={{ color: '#10B981', fontWeight: 600 }}>
+                                <MenuItem
+                                    value="active"
+                                    sx={{ color: '#10B981', fontWeight: 600 }}
+                                >
                                     Ativo
                                 </MenuItem>
-                                <MenuItem value="pending" sx={{ color: '#F59E0B', fontWeight: 600 }}>
+                                <MenuItem
+                                    value="pending"
+                                    sx={{ color: '#F59E0B', fontWeight: 600 }}
+                                >
                                     Pendente
                                 </MenuItem>
-                                <MenuItem value="inactive" sx={{ color: '#EF4444', fontWeight: 600 }}>
+                                <MenuItem
+                                    value="inactive"
+                                    sx={{ color: '#EF4444', fontWeight: 600 }}
+                                >
                                     Inativo
                                 </MenuItem>
                             </TextField>
@@ -455,8 +655,15 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                 </Paper>
 
                 {/* === SEÇÃO 2: DADOS CORPORATIVOS === */}
-                <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2, border: `1px solid ${BORDER_LIGHT}` }}>
-                    <SectionHeader title="Dados Corporativos" subtitle="Informações da empresa e financeiro" icon={<BusinessIcon />} />
+                <Paper
+                    elevation={0}
+                    sx={{ p: 3, mb: 3, borderRadius: 2, border: `1px solid ${BORDER_LIGHT}` }}
+                >
+                    <SectionHeader
+                        title="Dados Corporativos"
+                        subtitle="Informações da empresa e financeiro"
+                        icon={<BusinessIcon />}
+                    />
 
                     <Grid container spacing={2.5}>
                         <Grid size={{ xs: 12, md: 8 }}>
@@ -484,11 +691,16 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                     ),
                                     endAdornment: (
                                         <InputAdornment position="end">
-                                            <Typography sx={{ fontWeight: 600, color: GRAY_MAIN }}>%</Typography>
+                                            <Typography
+                                                sx={{ fontWeight: 600, color: GRAY_MAIN }}
+                                            >
+                                                %
+                                            </Typography>
                                         </InputAdornment>
                                     ),
                                 }}
                                 sx={inputSx}
+                                helperText=" "
                             />
                         </Grid>
 
@@ -503,48 +715,73 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                 placeholder="Anotações importantes sobre o cliente, histórico de negociação, etc."
                                 InputProps={{
                                     startAdornment: (
-                                        <InputAdornment position="start" sx={{ alignSelf: 'flex-start', mt: 1.5 }}>
+                                        <InputAdornment
+                                            position="start"
+                                            sx={{ alignSelf: 'flex-start', mt: 1.5 }}
+                                        >
                                             <NotesIcon sx={{ color: GOLD_PRIMARY }} />
                                         </InputAdornment>
                                     ),
                                 }}
                                 sx={inputSx}
+                                helperText=" "
                             />
                         </Grid>
                     </Grid>
                 </Paper>
 
                 {/* === SEÇÃO 3: ENDEREÇO === */}
-                <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2, border: `1px solid ${BORDER_LIGHT}` }}>
-                    <SectionHeader title="Endereço" subtitle="Localização para faturamento e correspondência" icon={<LocationIcon />} />
+                <Paper
+                    elevation={0}
+                    sx={{ p: 3, mb: 3, borderRadius: 2, border: `1px solid ${BORDER_LIGHT}` }}
+                >
+                    <SectionHeader
+                        title="Endereço"
+                        subtitle="Localização para faturamento e correspondência"
+                        icon={<LocationIcon />}
+                    />
 
                     <Grid container spacing={2.5}>
                         <Grid size={{ xs: 12, md: 3 }}>
                             <IconTextField
                                 icon={<NumbersIcon />}
-                                label="CEP"
+                                label="CEP *"
                                 value={form.cep}
                                 onChange={(e: any) => onChange({ cep: e.target.value })}
                                 placeholder="01001000"
-                                helperText="Use 8 dígitos (sem hífen)"
+                                required
+                                error={!form.cep?.trim() || invalidCEP}
+                                helperText={
+                                    !form.cep?.trim()
+                                        ? 'CEP é obrigatório'
+                                        : invalidCEP
+                                          ? 'CEP inválido'
+                                          : 'Use 8 dígitos (sem hífen)'
+                                }
                             />
                         </Grid>
 
                         <Grid size={{ xs: 12, md: 7 }}>
                             <IconTextField
                                 icon={<HomeIcon />}
-                                label="Logradouro"
+                                label="Logradouro *"
                                 value={form.street}
                                 onChange={(e: any) => onChange({ street: e.target.value })}
+                                required
+                                error={!form.street?.trim()}
+                                helperText={!form.street?.trim() ? 'Logradouro é obrigatório' : ' '}
                             />
                         </Grid>
 
                         <Grid size={{ xs: 12, md: 2 }}>
                             <TextField
-                                label="Número"
+                                label="Número *"
                                 value={form.number}
                                 onChange={(e: any) => onChange({ number: e.target.value })}
                                 fullWidth
+                                required
+                                error={!form.number?.trim()}
+                                helperText={!form.number?.trim() ? 'Número é obrigatório' : ' '}
                                 sx={inputSx}
                             />
                         </Grid>
@@ -557,38 +794,66 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                 fullWidth
                                 placeholder="Apto, Sala, Bloco..."
                                 sx={inputSx}
+                                helperText=" "
                             />
                         </Grid>
 
                         <Grid size={{ xs: 12, md: 4 }}>
                             <TextField
-                                label="Bairro"
+                                label="Bairro *"
                                 value={form.neighborhood}
-                                onChange={(e: any) => onChange({ neighborhood: e.target.value })}
+                                onChange={(e: any) =>
+                                    onChange({ neighborhood: e.target.value })
+                                }
                                 fullWidth
+                                required
+                                error={!form.neighborhood?.trim()}
+                                helperText={
+                                    !form.neighborhood?.trim()
+                                        ? 'Bairro é obrigatório'
+                                        : ' '
+                                }
                                 sx={inputSx}
                             />
                         </Grid>
 
                         <Grid size={{ xs: 12, md: 3 }}>
                             <TextField
-                                label="Cidade"
+                                label="Cidade *"
                                 value={form.city}
                                 onChange={(e: any) => onChange({ city: e.target.value })}
                                 fullWidth
+                                required
+                                error={!form.city?.trim()}
+                                helperText={!form.city?.trim() ? 'Cidade é obrigatória' : ' '}
                                 sx={inputSx}
                             />
                         </Grid>
 
                         <Grid size={{ xs: 12, md: 2 }}>
                             <TextField
-                                label="UF"
+                                label="UF *"
                                 value={form.state}
-                                onChange={(e: any) => onChange({ state: (e.target.value || '').toUpperCase() })}
+                                onChange={(e: any) =>
+                                    onChange({
+                                        state: (e.target.value || '').toUpperCase(),
+                                    })
+                                }
                                 fullWidth
+                                required
                                 placeholder="SP"
-                                inputProps={{ maxLength: 2, style: { textTransform: 'uppercase' } }}
-                                helperText="2 letras (ex: SP)"
+                                inputProps={{
+                                    maxLength: 2,
+                                    style: { textTransform: 'uppercase' },
+                                }}
+                                error={!form.state?.trim() || invalidUF}
+                                helperText={
+                                    !form.state?.trim()
+                                        ? 'UF é obrigatória'
+                                        : invalidUF
+                                          ? 'UF inválida'
+                                          : '2 letras (ex: SP)'
+                                }
                                 sx={inputSx}
                             />
                         </Grid>
@@ -597,8 +862,15 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
 
                 {/* === SEÇÃO 4: USUÁRIO DE ACESSO AO SISTEMA === */}
                 {isCreateMode && (
-                    <Paper elevation={0} sx={{ p: 3, borderRadius: 2, border: `1px solid ${BORDER_LIGHT}` }}>
-                        <SectionHeader title="Acesso ao Sistema" subtitle="Credenciais para login do cliente" icon={<SecurityIcon />} />
+                    <Paper
+                        elevation={0}
+                        sx={{ p: 3, borderRadius: 2, border: `1px solid ${BORDER_LIGHT}` }}
+                    >
+                        <SectionHeader
+                            title="Acesso ao Sistema"
+                            subtitle="Credenciais para login do cliente"
+                            icon={<SecurityIcon />}
+                        />
 
                         <Grid container spacing={2.5}>
                             <Grid size={{ xs: 12, md: 6 }}>
@@ -606,8 +878,15 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                     icon={<PersonIcon />}
                                     label="Username *"
                                     value={safeUser.username}
-                                    onChange={(e: any) => patchUser({ username: e.target.value })}
-                                    helperText="Ex: mariana.cli01"
+                                    onChange={(e: any) =>
+                                        patchUser({ username: e.target.value })
+                                    }
+                                    helperText={
+                                        !safeUser.username?.trim()
+                                            ? 'Username é obrigatório'
+                                            : 'Ex: mariana.cli01'
+                                    }
+                                    error={!safeUser.username?.trim()}
                                     required
                                 />
                             </Grid>
@@ -617,35 +896,62 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                                     icon={<KeyIcon />}
                                     label="Senha *"
                                     value={safeUser.password}
-                                    onChange={(e: any) => patchUser({ password: e.target.value })}
+                                    onChange={(e: any) =>
+                                        patchUser({ password: e.target.value })
+                                    }
                                     type="password"
-                                    helperText="Obrigatório no cadastro"
+                                    helperText={
+                                        !safeUser.password?.trim()
+                                            ? 'Senha é obrigatória'
+                                            : 'Obrigatório no cadastro'
+                                    }
+                                    error={!safeUser.password?.trim()}
                                     required
                                 />
                             </Grid>
 
                             <Grid size={{ xs: 12, md: 4 }}>
                                 <FormControlLabel
-                                    control={<Switch checked={safeUser.is_active} onChange={(e) => patchUser({ is_active: e.target.checked })} />}
+                                    control={
+                                        <Switch
+                                            checked={safeUser.is_active}
+                                            onChange={(e) =>
+                                                patchUser({ is_active: e.target.checked })
+                                            }
+                                        />
+                                    }
                                     label="Usuário Ativo"
                                 />
                             </Grid>
 
                             <Grid size={{ xs: 12, md: 4 }}>
                                 <FormControlLabel
-                                    control={<Switch checked={safeUser.is_staff} onChange={(e) => patchUser({ is_staff: e.target.checked })} />}
+                                    control={
+                                        <Switch
+                                            checked={safeUser.is_staff}
+                                            onChange={(e) =>
+                                                patchUser({ is_staff: e.target.checked })
+                                            }
+                                        />
+                                    }
                                     label="Staff"
                                 />
                             </Grid>
 
                             {/* <Grid size={{ xs: 12, md: 4 }}>
                                 <FormControlLabel
-                                    control={<Switch checked={safeUser.is_superuser} onChange={(e) => patchUser({ is_superuser: e.target.checked })} />}
+                                    control={
+                                        <Switch
+                                            checked={safeUser.is_superuser}
+                                            onChange={(e) =>
+                                                patchUser({ is_superuser: e.target.checked })
+                                            }
+                                        />
+                                    }
                                     label="Super Admin"
                                 />
                             </Grid> */}
 
-                            {/* Campos ocultos que serão preenchidos automaticamente */}
                             <input type="hidden" value={form.email} />
                             <input type="hidden" value={form.first_name} />
                             <input type="hidden" value={form.last_name} />
@@ -670,7 +976,10 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                             py: 1,
                             borderColor: BORDER_LIGHT,
                             color: GRAY_MAIN,
-                            '&:hover': { borderColor: GRAY_MAIN, bgcolor: GRAY_LIGHT },
+                            '&:hover': {
+                                borderColor: GRAY_MAIN,
+                                bgcolor: GRAY_LIGHT,
+                            },
                         }}
                     >
                         Cancelar
@@ -679,7 +988,7 @@ export default function CustomerModal({ open, editing, form, saving, onClose, on
                     <Button
                         onClick={onSave}
                         variant="contained"
-                        disabled={saving || !!missingRequiredData}
+                        disabled={disableSave}
                         disableElevation
                         sx={{
                             textTransform: 'none',

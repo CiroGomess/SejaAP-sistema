@@ -36,7 +36,7 @@ def token_required(fn):
 
     return wrapper
 
-
+@token_required
 @user_routes.post("/users/register")
 def route_register():
     return register_user()

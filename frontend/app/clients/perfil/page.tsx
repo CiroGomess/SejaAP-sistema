@@ -47,6 +47,9 @@ import {
 import services from '@/services/service';
 import AppAlert, { AlertType } from '@/components/AppAlert';
 import { Customer, DocCliente } from '@/components/clientProfile/types';
+import { LockReset as LockResetIcon } from '@mui/icons-material';
+import ChangePasswordModal from '@/components/clientProfile/ChangePasswordModal';
+
 
 // --- PALETA DE CORES EAP (Refinada) ---
 const GOLD_PRIMARY = '#B8860B';
@@ -71,18 +74,16 @@ function pickApiError(data: any): string {
   return 'Falha ao processar a requisição.';
 }
 
+
+
+
+
 function normalizeCustomer(input: any): Customer {
   const c = input?.customer ?? input ?? {};
 
   return {
-    id:
-      c.id != null
-        ? String(c.id)
-        : c.user_id != null
-          ? String(c.user_id)
-          : c.customer_id != null
-            ? String(c.customer_id)
-            : null,
+    id: c.id != null ? String(c.id) : null,
+    user_id: c.user_id != null ? String(c.user_id) : null,
     code: String(c.code ?? ''),
     first_name: String(c.first_name ?? ''),
     last_name: String(c.last_name ?? ''),
@@ -121,11 +122,13 @@ function normalizeDocList(data: any): DocCliente[] {
 const ProfileHeader = ({
   onBack,
   onRefresh,
+  onChangePassword,
   loading,
   customerCode,
 }: {
   onBack: () => void;
   onRefresh: () => void;
+  onChangePassword: () => void;
   loading: boolean;
   customerCode?: string;
 }) => (
@@ -177,27 +180,54 @@ const ProfileHeader = ({
         </Box>
       </Stack>
 
-      <Tooltip title="Atualizar dados">
-        <Button
-          onClick={onRefresh}
-          disabled={loading}
-          variant="outlined"
-          startIcon={<RefreshIcon />}
-          sx={{
-            textTransform: 'none',
-            fontWeight: 600,
-            borderRadius: 2,
-            borderColor: BORDER_LIGHT,
-            color: CHARCOAL,
-            '&:hover': {
-              borderColor: GOLD_PRIMARY,
-              bgcolor: alpha(GOLD_PRIMARY, 0.05),
-            },
-          }}
-        >
-          Atualizar
-        </Button>
-      </Tooltip>
+      <Stack direction="row" spacing={1.5} alignItems="center">
+        <Tooltip title="Trocar senha do usuário">
+          <Button
+            onClick={onChangePassword}
+            disabled={loading}
+            variant="contained"
+            startIcon={<LockResetIcon />}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 700,
+              borderRadius: 2,
+              bgcolor: GOLD_PRIMARY,
+              color: WHITE,
+              '&:hover': {
+                bgcolor: GOLD_LIGHT,
+              },
+              '&.Mui-disabled': {
+                bgcolor: alpha(GOLD_PRIMARY, 0.3),
+                color: WHITE,
+              },
+            }}
+          >
+            Trocar Senha
+          </Button>
+        </Tooltip>
+
+        <Tooltip title="Atualizar dados">
+          <Button
+            onClick={onRefresh}
+            disabled={loading}
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            sx={{
+              textTransform: 'none',
+              fontWeight: 600,
+              borderRadius: 2,
+              borderColor: BORDER_LIGHT,
+              color: CHARCOAL,
+              '&:hover': {
+                borderColor: GOLD_PRIMARY,
+                bgcolor: alpha(GOLD_PRIMARY, 0.05),
+              },
+            }}
+          >
+            Atualizar
+          </Button>
+        </Tooltip>
+      </Stack>
     </Stack>
   </Paper>
 );
@@ -708,6 +738,7 @@ export default function ClientePerfilPage() {
   const [loading, setLoading] = useState(true);
   const [docsLoading, setDocsLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [docs, setDocs] = useState<DocCliente[]>([]);
@@ -900,6 +931,7 @@ export default function ClientePerfilPage() {
             await loadDocs(customer.id);
           }
         }}
+        onChangePassword={() => setChangePasswordOpen(true)}
         loading={loading || docsLoading}
         customerCode={customer?.code}
       />
@@ -976,6 +1008,15 @@ export default function ClientePerfilPage() {
         severity={alertSeverity}
         onClose={() => setAlertOpen(false)}
       />
+
+      <ChangePasswordModal
+        open={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+        userId={customer?.user_id}
+        showAlert={showAlert}
+      />
     </Container>
+
+
   );
 }

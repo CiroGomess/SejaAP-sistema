@@ -56,7 +56,7 @@ const STORAGE_KEY = 'selectedClient';
 // =======================
 const menuItemsAdmin = [
   {
-    text: 'Dashboard',
+    text: 'Dashboard ADM',
     icon: <DashboardIcon />,
     href: '/dashboard',
     requiresClient: false,
@@ -72,21 +72,24 @@ const menuItemsAdmin = [
 ];
 
 // =======================
-// MENUS (TODOS) — exigem cliente
+// MENUS DE RECEITAS
 // =======================
-
-
-
 const receitasChildren = [
-  { text: 'Cadastrar receita', icon: <AddIcon />, href: '/receitas/cadastrar', requiresClient: true },
+  { text: 'Importar / Cadastrar', icon: <AddIcon />, href: '/receitas/cadastrar', requiresClient: true },
   { text: 'Listar receitas', icon: <ReceiptIcon />, href: '/receitas/listar', requiresClient: true },
-  { text: 'Análise de margem', icon: <CalculateIcon />, href: '/analise', requiresClient: true },
-  { text: 'Listar análises', icon: <AssessmentIcon />, href: '/analise/listar', requiresClient: true },
-  { text: 'Curva ABC Produtos', icon: <BarChartIcon />, href: '/curva-abc-produtos/produtos', requiresClient: true },
-  { text: 'Ticket Médio', icon: <AttachMoneyIcon />, href: '/ticket', requiresClient: true },
-  { text: 'Ciclo Operacional', icon: <CycleIcon />, href: '/ciclo-operacional', requiresClient: true },
 ];
 
+// =======================
+// MENUS DE ANÁLISE DE MARGEM (INDEPENDENTE)
+// =======================
+const analiseChildren = [
+  { text: 'Importar / Cadastrar', icon: <AddIcon />, href: '/analise', requiresClient: true },
+  { text: 'Listar análises', icon: <AssessmentIcon />, href: '/analise/listar', requiresClient: true },
+];
+
+// =======================
+// MENUS DE CONTABILIDADE
+// =======================
 const contabilidadeChildren = [
   { text: 'Importar / Cadastrar', icon: <AddIcon />, href: '/contabilidade/cadastro', requiresClient: true },
   { text: 'Listar dados', icon: <FolderIcon />, href: '/contabilidade/listar', requiresClient: true },
@@ -104,43 +107,81 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
 
   const [selectedClient, setSelectedClient] = useState<SelectedClient | null>(null);
   const [receitasOpen, setReceitasOpen] = useState(false);
+  const [analiseOpen, setAnaliseOpen] = useState(false);
   const [contabilidadeOpen, setContabilidadeOpen] = useState(false);
   const [helpModalOpen, setHelpModalOpen] = useState(false);
-
 
   // ✅ Admin vindo do backend
   const [loadingUser, setLoadingUser] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-
   // =======================
   // MENU DASH CLIENTE
   // =======================
   const menuItemDashCliente = {
-    text: 'Dashboard Cliente',
+    text: 'Dashboard',
     icon: <DashboardIcon />,
     href: '/dash-cliente',
     requiresClient: true,
     description: 'Painel do cliente',
   };
 
+  // =======================
+  // MENUS INDEPENDENTES
+  // =======================
+  const menuItemTicketMedio = {
+    text: 'Ticket Médio',
+    icon: <AttachMoneyIcon />,
+    href: '/ticket',
+    requiresClient: true,
+    description: 'Análise de ticket médio',
+  };
+
+  const menuItemCicloOperacional = {
+    text: 'Ciclo Operacional',
+    icon: <CycleIcon />,
+    href: '/ciclo-operacional',
+    requiresClient: true,
+    description: 'Análise do ciclo operacional',
+  };
+
+  const menuItemCurvaABC = {
+    text: 'Curva ABC Produtos',
+    icon: <BarChartIcon />,
+    href: '/curva-abc-produtos/produtos',
+    requiresClient: true,
+    description: 'Classificação ABC de produtos',
+  };
+
+  // =======================
+  // DETECÇÃO DE ROTAS ATIVAS
+  // =======================
   const isReceitasRoute = useMemo(() => {
-    return (
-      pathname.startsWith('/receitas') ||
-      pathname.startsWith('/analise') ||
-      pathname.startsWith('/curva-abc') ||
-      pathname.startsWith('/curva-abc-produtos') ||
-      pathname.startsWith('/ticket') ||
-      pathname.startsWith('/ciclo-operacional') ||
-      pathname.startsWith('/clients/lt-clientes')
-    );
+    return pathname.startsWith('/receitas');
   }, [pathname]);
 
-  const isContabilidadeRoute = useMemo(() => pathname.startsWith('/contabilidade'), [pathname]);
+  const isAnaliseRoute = useMemo(() => {
+    return pathname.startsWith('/analise');
+  }, [pathname]);
+
+  const isContabilidadeRoute = useMemo(() => {
+    return pathname.startsWith('/contabilidade');
+  }, [pathname]);
+
+  const isTicketRoute = useMemo(() => {
+    return pathname.startsWith('/ticket');
+  }, [pathname]);
+
+  const isCicloRoute = useMemo(() => {
+    return pathname.startsWith('/ciclo-operacional');
+  }, [pathname]);
+
+  const isCurvaABCRoute = useMemo(() => {
+    return pathname.startsWith('/curva-abc-produtos');
+  }, [pathname]);
 
   // =========================
   // Load selected client (storage)
-  // - Agora aceita id mesmo que code/name estejam vazios
   // =========================
   const loadClientFromStorage = () => {
     try {
@@ -152,10 +193,9 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
 
       const parsed = JSON.parse(raw);
 
-      // ✅ Novo comportamento: basta ter id válido
       if (parsed?.id) {
         const normalized: SelectedClient = {
-          id: Number(parsed.id),
+          id: parsed.id,
           code: String(parsed.code || ''),
           name: String(parsed.name || ''),
         } as SelectedClient;
@@ -164,10 +204,9 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
         return;
       }
 
-      // fallback legado
       if (parsed?.code && parsed?.name) {
         const normalized: SelectedClient = {
-          id: Number(parsed.id || 0),
+          id: parsed.id,
           code: String(parsed.code || ''),
           name: String(parsed.name || ''),
         } as SelectedClient;
@@ -184,7 +223,7 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
 
   const forceClientForNonAdmin = async (u: any) => {
     try {
-      const clientId = Number(u?.client_id || 0);
+      const clientId = u?.client_id || 0;
       const clientCode = String(u?.client_code ?? u?.code ?? '').trim();
 
       if (!clientId) {
@@ -194,10 +233,8 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
         return;
       }
 
-      // 1) tenta vir pronto (caso você adicione no backend no futuro)
       let clientName = String(u?.client_name ?? '').trim();
 
-      // 2) se não veio nome, busca no /customers (mesma fonte do modal)
       if (!clientName) {
         const resCustomers = await services('/customers', { method: 'GET' });
 
@@ -210,7 +247,7 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
 
           const found = list
             .map((x: any) => x?.customer ?? x)
-            .find((c: any) => Number(c?.id) === clientId);
+            .find((c: any) => c?.id === clientId);
 
           if (found) {
             const first = String(found.first_name ?? '').trim();
@@ -223,7 +260,7 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
       const forcedSelectedClient: SelectedClient = {
         id: clientId,
         code: clientCode,
-        name: clientName || '', // se não achar, fica vazio
+        name: clientName || '',
       };
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(forcedSelectedClient));
@@ -236,7 +273,6 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
     }
   };
 
-
   const loadUserFromApi = async () => {
     setLoadingUser(true);
 
@@ -244,14 +280,13 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
       const rawId = localStorage.getItem('sejaap_user_id');
       const token = localStorage.getItem('sejaap_access');
 
-      // Sem login -> não faz nada
       if (!rawId || !token) {
         setIsAdmin(false);
         setLoadingUser(false);
         return;
       }
 
-      const userId = rawId
+      const userId = rawId;
       if (!userId) {
         setIsAdmin(false);
         setLoadingUser(false);
@@ -261,7 +296,6 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
       const r = await services(`/users/${userId}`, { method: 'GET' });
 
       if (!r.success) {
-        // token inválido/expirado
         if (r.status === 401 || r.status === 403) {
           setIsAdmin(false);
           setLoadingUser(false);
@@ -280,9 +314,6 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
 
       setIsAdmin(admin);
 
-      // ✅ regra:
-      // - ADMIN: mantém seleção manual (localStorage selectedClient vindo do modal/lista)
-      // - NÃO ADMIN: força selectedClient usando client_id/client_code vindos da API
       if (!admin) {
         await forceClientForNonAdmin(u);
       } else {
@@ -297,17 +328,12 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
   };
 
   useEffect(() => {
-    // carrega o que tiver no storage pra não piscar
     loadClientFromStorage();
-
-    // valida permissões e aplica regra admin/non-admin
     loadUserFromApi();
-
 
     const onClientChanged = () => loadClientFromStorage();
     window.addEventListener('clientChanged', onClientChanged);
 
-    // mudanças em outra aba
     const onStorage = (ev: StorageEvent) => {
       if (!ev.key) return;
 
@@ -326,8 +352,9 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
 
   useEffect(() => {
     if (isReceitasRoute) setReceitasOpen(true);
+    if (isAnaliseRoute) setAnaliseOpen(true);
     if (isContabilidadeRoute) setContabilidadeOpen(true);
-  }, [isReceitasRoute, isContabilidadeRoute]);
+  }, [isReceitasRoute, isAnaliseRoute, isContabilidadeRoute]);
 
   // =========================
   // Styles
@@ -382,7 +409,6 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
     },
   });
 
-  // ✅ enquanto carrega user, não renderiza menus admin (evita "flash")
   const canShowAdminMenus = !loadingUser && isAdmin;
 
   return (
@@ -464,8 +490,9 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
             </>
           )}
 
-
-
+          {/* =========================
+              DASHBOARD CLIENTE
+             ========================= */}
           <ListItem disablePadding>
             <ListItemButton
               component={Link}
@@ -488,7 +515,7 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
           </ListItem>
 
           {/* =========================
-              SEÇÃO RECEITAS (TODOS)
+              SEÇÃO RECEITAS
              ========================= */}
           <ListItem disablePadding sx={{ mt: 1 }}>
             <ListItemButton
@@ -583,7 +610,174 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
           </Collapse>
 
           {/* =========================
-              SEÇÃO CONTABILIDADE (TODOS)
+              SEÇÃO ANÁLISE DE MARGEM (INDEPENDENTE)
+             ========================= */}
+          <ListItem disablePadding sx={{ mt: 1 }}>
+            <ListItemButton
+              onClick={() => selectedClient && setAnaliseOpen(!analiseOpen)}
+              selected={isAnaliseRoute}
+              disabled={!selectedClient}
+              sx={baseItemSx(isAnaliseRoute, !selectedClient)}
+            >
+              <ListItemIcon>
+                <CalculateIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary="Análise de Margem"
+                secondary="Análise de rentabilidade"
+                secondaryTypographyProps={{ fontSize: '0.7rem', color: alpha(WHITE, 0.4) }}
+              />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                {isAnaliseRoute && (
+                  <Badge
+                    variant="dot"
+                    sx={{
+                      '& .MuiBadge-badge': {
+                        bgcolor: GOLD_PRIMARY,
+                      },
+                    }}
+                  />
+                )}
+                {analiseOpen ? (
+                  <ExpandLess sx={{ color: GOLD_PRIMARY, fontSize: '1.2rem' }} />
+                ) : (
+                  <ExpandMore sx={{ color: alpha(WHITE, 0.4), fontSize: '1.2rem' }} />
+                )}
+              </Box>
+            </ListItemButton>
+          </ListItem>
+
+          <Collapse in={analiseOpen && !!selectedClient} timeout="auto" unmountOnExit>
+            <List disablePadding sx={{ position: 'relative', mb: 1 }}>
+              <Box
+                sx={{
+                  position: 'absolute',
+                  left: 32,
+                  top: 0,
+                  bottom: 8,
+                  width: '2px',
+                  bgcolor: alpha(GOLD_PRIMARY, 0.1),
+                }}
+              />
+
+              {analiseChildren.map((child) => {
+                const isSelected = pathname === child.href;
+
+                return (
+                  <Fade in timeout={300} key={child.text}>
+                    <ListItemButton
+                      component={Link}
+                      href={child.href}
+                      onClick={() => variant === 'temporary' && onClose()}
+                      selected={isSelected}
+                      sx={{
+                        ...baseItemSx(isSelected, false),
+                        ml: 4,
+                        py: 0.8,
+                        pl: 2,
+                        backgroundColor: 'transparent',
+                        '&:hover': { backgroundColor: alpha(GOLD_PRIMARY, 0.03) },
+                        borderLeft: isSelected ? `2px solid ${GOLD_PRIMARY}` : '2px solid transparent',
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 32 }}>
+                        {React.cloneElement(child.icon as React.ReactElement, {
+                          sx: {
+                            fontSize: '1rem',
+                            color: isSelected ? GOLD_PRIMARY : alpha(WHITE, 0.5),
+                          },
+                        })}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={child.text}
+                        primaryTypographyProps={{
+                          fontSize: '0.8rem',
+                          fontWeight: isSelected ? 600 : 400,
+                          color: isSelected ? GOLD_PRIMARY : alpha(WHITE, 0.8),
+                        }}
+                      />
+                      {isSelected && <ChevronRightIcon sx={{ color: GOLD_PRIMARY, fontSize: '1rem' }} />}
+                    </ListItemButton>
+                  </Fade>
+                );
+              })}
+            </List>
+          </Collapse>
+
+          {/* =========================
+              TICKET MÉDIO (INDEPENDENTE)
+             ========================= */}
+          <ListItem disablePadding sx={{ mt: 1 }}>
+            <ListItemButton
+              component={Link}
+              href={menuItemTicketMedio.href}
+              onClick={() => variant === 'temporary' && onClose()}
+              selected={isTicketRoute}
+              disabled={!selectedClient}
+              sx={baseItemSx(isTicketRoute, !selectedClient)}
+            >
+              <ListItemIcon>{menuItemTicketMedio.icon}</ListItemIcon>
+              <ListItemText
+                primary={menuItemTicketMedio.text}
+                secondary={menuItemTicketMedio.description}
+                secondaryTypographyProps={{
+                  fontSize: '0.7rem',
+                  color: alpha(WHITE, 0.4),
+                }}
+              />
+            </ListItemButton>
+          </ListItem>
+
+          {/* =========================
+              CURVA ABC (INDEPENDENTE)
+             ========================= */}
+          <ListItem disablePadding sx={{ mt: 1 }}>
+            <ListItemButton
+              component={Link}
+              href={menuItemCurvaABC.href}
+              onClick={() => variant === 'temporary' && onClose()}
+              selected={isCurvaABCRoute}
+              disabled={!selectedClient}
+              sx={baseItemSx(isCurvaABCRoute, !selectedClient)}
+            >
+              <ListItemIcon>{menuItemCurvaABC.icon}</ListItemIcon>
+              <ListItemText
+                primary={menuItemCurvaABC.text}
+                secondary={menuItemCurvaABC.description}
+                secondaryTypographyProps={{
+                  fontSize: '0.7rem',
+                  color: alpha(WHITE, 0.4),
+                }}
+              />
+            </ListItemButton>
+          </ListItem>
+
+          {/* =========================
+              CICLO OPERACIONAL (INDEPENDENTE)
+             ========================= */}
+          <ListItem disablePadding sx={{ mt: 1 }}>
+            <ListItemButton
+              component={Link}
+              href={menuItemCicloOperacional.href}
+              onClick={() => variant === 'temporary' && onClose()}
+              selected={isCicloRoute}
+              disabled={!selectedClient}
+              sx={baseItemSx(isCicloRoute, !selectedClient)}
+            >
+              <ListItemIcon>{menuItemCicloOperacional.icon}</ListItemIcon>
+              <ListItemText
+                primary={menuItemCicloOperacional.text}
+                secondary={menuItemCicloOperacional.description}
+                secondaryTypographyProps={{
+                  fontSize: '0.7rem',
+                  color: alpha(WHITE, 0.4),
+                }}
+              />
+            </ListItemButton>
+          </ListItem>
+
+          {/* =========================
+              SEÇÃO CONTABILIDADE
              ========================= */}
           <ListItem disablePadding sx={{ mt: 1 }}>
             <ListItemButton
@@ -682,8 +876,6 @@ export default function Sidebar({ open, onClose, variant }: SidebarProps) {
       {/* Footer */}
       <Box sx={{ px: 2.5, py: 2, borderTop: `1px solid ${alpha(GOLD_PRIMARY, 0.1)}` }}>
         <Stack spacing={1}>
-
-
           <ListItemButton
             onClick={() => setHelpModalOpen(true)}
             sx={{

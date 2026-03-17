@@ -2,6 +2,7 @@ export type CustomerStatus = 'active' | 'pending' | 'inactive';
 
 export type Customer = {
   id?: number | string | null;
+  user_id?: number | string | null;
   code: string;
   first_name: string;
   last_name: string;

@@ -27,6 +27,7 @@ FIELDS = {
     "created_at",
     "updated_at",
     "IPCA",
+    "user_id",
 }
 
 # Campos aceitos para criar usuário junto
@@ -45,15 +46,16 @@ USER_FIELDS = {
 def create_customer():
     data = request.get_json(silent=True) or {}
 
-    # ---- valida cliente ----
+    # valida campos obrigatórios do cliente
     required = ["code", "first_name", "last_name", "email"]
     missing = [k for k in required if not data.get(k)]
     if missing:
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
-    payload = {k: data.get(k) for k in FIELDS if k in data}
+    # não deixa user_id vir manualmente no create
+    payload = {k: data.get(k) for k in FIELDS if k in data and k != "user_id"}
 
-    # Defaults
+    # defaults
     if not payload.get("status"):
         payload["status"] = "active"
     if "is_whatsapp" not in payload:
@@ -62,7 +64,7 @@ def create_customer():
     payload["created_at"] = datetime.utcnow()
     payload["updated_at"] = datetime.utcnow()
 
-    # ---- user opcional ----
+    # usuário opcional
     user_in = data.get("user")
     create_user = isinstance(user_in, dict)
 
@@ -71,16 +73,22 @@ def create_customer():
         conn = get_connection()
         cur = conn.cursor()
 
-        # valida duplicidade básica do cliente
-        cur.execute("SELECT id FROM public.clientes WHERE code = %s LIMIT 1;", (payload["code"],))
+        # valida duplicidade do cliente
+        cur.execute(
+            "SELECT id FROM public.clientes WHERE code = %s LIMIT 1;",
+            (payload["code"],),
+        )
         if cur.fetchone():
             return jsonify({"error": "code already exists"}), 409
 
-        cur.execute("SELECT id FROM public.clientes WHERE email = %s LIMIT 1;", (payload["email"],))
+        cur.execute(
+            "SELECT id FROM public.clientes WHERE email = %s LIMIT 1;",
+            (payload["email"],),
+        )
         if cur.fetchone():
             return jsonify({"error": "email already exists"}), 409
 
-        # ========= 1) CRIA CLIENTE =========
+        # cria cliente
         novo_customer_id = generate_secure_id()
 
         columns = ["id"] + list(payload.keys())
@@ -90,7 +98,29 @@ def create_customer():
         sql_customer = f"""
             INSERT INTO public.clientes ({", ".join(columns)})
             VALUES ({placeholders})
-            RETURNING id, code, first_name, last_name, email, status, created_at, updated_at, IPCA;
+            RETURNING
+                id,
+                user_id,
+                code,
+                first_name,
+                last_name,
+                email,
+                document,
+                phone,
+                is_whatsapp,
+                company_name,
+                status,
+                notes,
+                cep,
+                street,
+                number,
+                complement,
+                neighborhood,
+                city,
+                state,
+                created_at,
+                updated_at,
+                IPCA;
         """
 
         cur.execute(sql_customer, tuple(values))
@@ -98,8 +128,9 @@ def create_customer():
         customer_id = row[0]
 
         created_user_payload = None
+        customer_user_id = row[1]
 
-        # ========= 2) CRIA USUÁRIO (SE VIER NO BODY) =========
+        # cria usuário se vier no body
         if create_user:
             user_payload = {k: user_in.get(k) for k in USER_FIELDS if k in user_in}
 
@@ -116,23 +147,27 @@ def create_customer():
             first_name = str(user_payload["first_name"]).strip()
             last_name = str(user_payload["last_name"]).strip()
 
-            # defaults do usuário
             is_active = bool(user_payload.get("is_active", True))
             is_staff = bool(user_payload.get("is_staff", False))
             is_superuser = bool(user_payload.get("is_superuser", False))
 
-            # Não deixa criar superuser pela API do cliente
             if is_superuser:
                 conn.rollback()
                 return jsonify({"error": "Não é permitido criar superuser por este endpoint."}), 403
 
             # valida duplicidade do usuário
-            cur.execute("SELECT id FROM public.auth_user WHERE username = %s LIMIT 1;", (username,))
+            cur.execute(
+                "SELECT id FROM public.auth_user WHERE username = %s LIMIT 1;",
+                (username,),
+            )
             if cur.fetchone():
                 conn.rollback()
                 return jsonify({"error": "username already exists"}), 409
 
-            cur.execute("SELECT id FROM public.auth_user WHERE email = %s LIMIT 1;", (email,))
+            cur.execute(
+                "SELECT id FROM public.auth_user WHERE email = %s LIMIT 1;",
+                (email,),
+            )
             if cur.fetchone():
                 conn.rollback()
                 return jsonify({"error": "email already exists"}), 409
@@ -143,10 +178,32 @@ def create_customer():
             cur.execute(
                 """
                 INSERT INTO public.auth_user
-                    (id, password, last_login, is_superuser, username, first_name, last_name, email, is_staff, is_active, date_joined, client_id)
+                    (
+                        id,
+                        password,
+                        last_login,
+                        is_superuser,
+                        username,
+                        first_name,
+                        last_name,
+                        email,
+                        is_staff,
+                        is_active,
+                        date_joined,
+                        client_id
+                    )
                 VALUES
                     (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, username, email, first_name, last_name, is_superuser, is_staff, is_active, client_id;
+                RETURNING
+                    id,
+                    username,
+                    email,
+                    first_name,
+                    last_name,
+                    is_superuser,
+                    is_staff,
+                    is_active,
+                    client_id;
                 """,
                 (
                     novo_user_id,
@@ -165,6 +222,19 @@ def create_customer():
             )
 
             u = cur.fetchone()
+
+            # atualiza o cliente com user_id do usuário criado
+            cur.execute(
+                """
+                UPDATE public.clientes
+                SET user_id = %s, updated_at = %s
+                WHERE id = %s;
+                """,
+                (novo_user_id, datetime.utcnow(), customer_id),
+            )
+
+            customer_user_id = novo_user_id
+
             created_user_payload = {
                 "id": u[0],
                 "username": u[1],
@@ -177,21 +247,33 @@ def create_customer():
                 "client_id": u[8],
             }
 
-        # ✅ commita tudo (cliente + user)
         conn.commit()
 
         response = {
             "message": "Customer created" if not created_user_payload else "Customer + User created",
             "customer": {
                 "id": row[0],
-                "code": row[1],
-                "first_name": row[2],
-                "last_name": row[3],
-                "email": row[4],
-                "status": row[5],
-                "created_at": str(row[6]) if row[6] else None,
-                "updated_at": str(row[7]) if row[7] else None,
-                "IPCA": row[8],
+                "user_id": customer_user_id,
+                "code": row[2],
+                "first_name": row[3],
+                "last_name": row[4],
+                "email": row[5],
+                "document": row[6],
+                "phone": row[7],
+                "is_whatsapp": row[8],
+                "company_name": row[9],
+                "status": row[10],
+                "notes": row[11],
+                "cep": row[12],
+                "street": row[13],
+                "number": row[14],
+                "complement": row[15],
+                "neighborhood": row[16],
+                "city": row[17],
+                "state": row[18],
+                "created_at": str(row[19]) if row[19] else None,
+                "updated_at": str(row[20]) if row[20] else None,
+                "IPCA": row[21],
             },
         }
 
@@ -218,9 +300,28 @@ def list_customers():
         cur.execute(
             """
             SELECT
-                id, code, first_name, last_name, email, document, phone, is_whatsapp,
-                company_name, status, notes, cep, street, number, complement, neighborhood,
-                city, state, created_at, updated_at, IPCA
+                id,
+                user_id,
+                code,
+                first_name,
+                last_name,
+                email,
+                document,
+                phone,
+                is_whatsapp,
+                company_name,
+                status,
+                notes,
+                cep,
+                street,
+                number,
+                complement,
+                neighborhood,
+                city,
+                state,
+                created_at,
+                updated_at,
+                IPCA
             FROM public.clientes
             ORDER BY id ASC;
             """
@@ -232,26 +333,27 @@ def list_customers():
             customers.append(
                 {
                     "id": r[0],
-                    "code": r[1],
-                    "first_name": r[2],
-                    "last_name": r[3],
-                    "email": r[4],
-                    "document": r[5],
-                    "phone": r[6],
-                    "is_whatsapp": r[7],
-                    "company_name": r[8],
-                    "status": r[9],
-                    "notes": r[10],
-                    "cep": r[11],
-                    "street": r[12],
-                    "number": r[13],
-                    "complement": r[14],
-                    "neighborhood": r[15],
-                    "city": r[16],
-                    "state": r[17],
-                    "created_at": str(r[18]) if r[18] else None,
-                    "updated_at": str(r[19]) if r[19] else None,
-                    "IPCA": r[20],
+                    "user_id": r[1],
+                    "code": r[2],
+                    "first_name": r[3],
+                    "last_name": r[4],
+                    "email": r[5],
+                    "document": r[6],
+                    "phone": r[7],
+                    "is_whatsapp": r[8],
+                    "company_name": r[9],
+                    "status": r[10],
+                    "notes": r[11],
+                    "cep": r[12],
+                    "street": r[13],
+                    "number": r[14],
+                    "complement": r[15],
+                    "neighborhood": r[16],
+                    "city": r[17],
+                    "state": r[18],
+                    "created_at": str(r[19]) if r[19] else None,
+                    "updated_at": str(r[20]) if r[20] else None,
+                    "IPCA": r[21],
                 }
             )
 
@@ -273,9 +375,28 @@ def get_customer(code: str):
         cur.execute(
             """
             SELECT
-                id, code, first_name, last_name, email, document, phone, is_whatsapp,
-                company_name, status, notes, cep, street, number, complement, neighborhood,
-                city, state, created_at, updated_at, IPCA
+                id,
+                user_id,
+                code,
+                first_name,
+                last_name,
+                email,
+                document,
+                phone,
+                is_whatsapp,
+                company_name,
+                status,
+                notes,
+                cep,
+                street,
+                number,
+                complement,
+                neighborhood,
+                city,
+                state,
+                created_at,
+                updated_at,
+                IPCA
             FROM public.clientes
             WHERE code = %s
             LIMIT 1;
@@ -291,26 +412,27 @@ def get_customer(code: str):
             {
                 "customer": {
                     "id": r[0],
-                    "code": r[1],
-                    "first_name": r[2],
-                    "last_name": r[3],
-                    "email": r[4],
-                    "document": r[5],
-                    "phone": r[6],
-                    "is_whatsapp": r[7],
-                    "company_name": r[8],
-                    "status": r[9],
-                    "notes": r[10],
-                    "cep": r[11],
-                    "street": r[12],
-                    "number": r[13],
-                    "complement": r[14],
-                    "neighborhood": r[15],
-                    "city": r[16],
-                    "state": r[17],
-                    "created_at": str(r[18]) if r[18] else None,
-                    "updated_at": str(r[19]) if r[19] else None,
-                    "IPCA": r[20],
+                    "user_id": r[1],
+                    "code": r[2],
+                    "first_name": r[3],
+                    "last_name": r[4],
+                    "email": r[5],
+                    "document": r[6],
+                    "phone": r[7],
+                    "is_whatsapp": r[8],
+                    "company_name": r[9],
+                    "status": r[10],
+                    "notes": r[11],
+                    "cep": r[12],
+                    "street": r[13],
+                    "number": r[14],
+                    "complement": r[15],
+                    "neighborhood": r[16],
+                    "city": r[17],
+                    "state": r[18],
+                    "created_at": str(r[19]) if r[19] else None,
+                    "updated_at": str(r[20]) if r[20] else None,
+                    "IPCA": r[21],
                 }
             }
         ), 200
@@ -324,7 +446,9 @@ def get_customer(code: str):
 
 def update_customer(code: str):
     data = request.get_json(silent=True) or {}
-    payload = {k: data[k] for k in data.keys() if k in FIELDS}
+
+    # bloqueia update manual de user_id
+    payload = {k: data[k] for k in data.keys() if k in FIELDS and k != "user_id"}
 
     if not payload:
         return jsonify({"error": "No valid fields to update"}), 400

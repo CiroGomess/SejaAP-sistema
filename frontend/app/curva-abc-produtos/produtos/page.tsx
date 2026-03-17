@@ -41,7 +41,6 @@ import {
   ArrowBack as ArrowBackIcon,
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
-  Assessment as AssessmentIcon,
   Category as CategoryIcon,
   AttachMoney as AttachMoneyIcon,
   Timeline as TimelineIcon,
@@ -962,15 +961,7 @@ export default function CurvaABCProdutosPage() {
                   <Typography variant="h6" sx={{ fontWeight: 700, color: TEXT_DARK, mb: 0.5 }}>
                     Ranking por Faturamento
                   </Typography>
-                  <Stack direction="row" spacing={2} alignItems="center" sx={{ mt: 0.5 }}>
-                    <Chip
-                      icon={<AssessmentIcon />}
-                      label={`${pagination?.total_items || items.length} itens`}
-                      size="small"
-                      sx={{ bgcolor: alpha(GOLD_PRIMARY, 0.1), color: GOLD_PRIMARY, fontWeight: 600 }}
-                    />
-
-                  </Stack>
+                 
                 </Box>
 
                 <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">

@@ -7,25 +7,32 @@ import {
     Avatar,
     Typography,
     alpha,
-    Box 
+    Box
 } from '@mui/material';
+
 import {
     AttachMoney as AttachMoneyIcon,
     TrendingUp as TrendingUpIcon,
     Timeline as TimelineIcon,
-    Percent as PercentIcon,
-    Category as CategoryIcon,
     Inventory as InventoryIcon,
+    EmojiEvents as EmojiEventsIcon,
+    TrendingDown as TrendingDownIcon,
 } from '@mui/icons-material';
 
 interface ResumoCardsProps {
     data: {
         faturamentoTotal: number;
         ticketMedio: number;
-        margemMedia: number;
-        totalProdutos: number;
         crescimentoAnual: number;
-        categoriasAtivas: number;
+        totalProdutos: number;
+        melhorMes: {
+            mes: string;
+            valor: number;
+        } | null;
+        piorMes: {
+            mes: string;
+            valor: number;
+        } | null;
     };
 }
 
@@ -45,7 +52,7 @@ export default function ResumoCards({ data }: ResumoCardsProps) {
             valor: money(data.faturamentoTotal),
             icone: <AttachMoneyIcon />,
             cor: '#10B981',
-            subtitulo: 'Últimos 12 meses',
+            subtitulo: 'Total faturado no período',
         },
         {
             titulo: 'Ticket Médio',
@@ -55,15 +62,8 @@ export default function ResumoCards({ data }: ResumoCardsProps) {
             subtitulo: 'Valor médio por venda',
         },
         {
-            titulo: 'Margem Média',
-            valor: `${data.margemMedia.toFixed(1)}%`,
-            icone: <PercentIcon />,
-            cor: '#8B5CF6',
-            subtitulo: 'Rentabilidade',
-        },
-        {
             titulo: 'Crescimento Anual',
-            valor: `${data.crescimentoAnual > 0 ? '+' : ''}${data.crescimentoAnual.toFixed(1)}%`,
+            valor: `${data.crescimentoAnual > 0 ? '+' : ''}${data.crescimentoAnual.toFixed(2)}%`,
             icone: <TrendingUpIcon />,
             cor: data.crescimentoAnual >= 0 ? '#10B981' : '#EF4444',
             subtitulo: 'Comparado ao ano anterior',
@@ -73,47 +73,120 @@ export default function ResumoCards({ data }: ResumoCardsProps) {
             valor: data.totalProdutos.toString(),
             icone: <InventoryIcon />,
             cor: '#F59E0B',
-            subtitulo: 'Itens ativos',
+            subtitulo: 'Itens vendidos',
         },
         {
-            titulo: 'Categorias',
-            valor: data.categoriasAtivas.toString(),
-            icone: <CategoryIcon />,
-            cor: '#E6C969',
-            subtitulo: 'Em análise',
+            titulo: 'Melhor Mês',
+            valor: data.melhorMes ? data.melhorMes.mes : '-',
+            icone: <EmojiEventsIcon />,
+            cor: '#10B981',
+            subtitulo: data.melhorMes ? money(data.melhorMes.valor) : 'Sem dados',
         },
+        {
+            titulo: 'Pior Mês',
+            valor: data.piorMes ? data.piorMes.mes : '-',
+            icone: <TrendingDownIcon />,
+            cor: '#F59E0B',
+            subtitulo: data.piorMes ? money(data.piorMes.valor) : 'Sem dados',
+        }
     ];
 
     return (
-        <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid container spacing={2} sx={{ mb: 4 }}>
             {cards.map((card, index) => (
                 <Grid size={{ xs: 12, sm: 6, md: 4 }} key={index}>
                     <Paper
                         elevation={0}
                         sx={{
                             p: 2,
+                            height: '100%',
+                            minHeight: 80,
                             borderRadius: 3,
+                            display: 'flex',
+                            alignItems: 'center',
                             bgcolor: alpha(card.cor, 0.04),
                             border: `1px solid ${alpha(card.cor, 0.15)}`,
                             transition: 'all 0.2s ease',
                             '&:hover': {
                                 transform: 'translateY(-2px)',
-                                boxShadow: `0 8px 16px ${alpha(card.cor, 0.1)}`,
+                                boxShadow: `0 8px 16px ${alpha(card.cor, 0.12)}`,
                             },
                         }}
                     >
-                        <Stack direction="row" spacing={1.5} alignItems="center">
-                            <Avatar sx={{ bgcolor: alpha(card.cor, 0.1), color: card.cor, width: 48, height: 48 }}>
+                        <Stack 
+                            direction="row" 
+                            spacing={2} 
+                            alignItems="center" 
+                            sx={{ 
+                                width: '100%',
+                                height: '100%'
+                            }}
+                        >
+                            <Avatar
+                                sx={{
+                                    bgcolor: alpha(card.cor, 0.12),
+                                    color: card.cor,
+                                    width: 40,
+                                    height: 40,
+                                    flexShrink: 0,
+                                }}
+                            >
                                 {card.icone}
                             </Avatar>
-                            <Box sx={{ flex: 1 }}>
-                                <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 500 }}>
-                                    {card.titulo}
-                                </Typography>
-                                <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F172A' }}>
-                                    {card.valor}
-                                </Typography>
-                                <Typography variant="caption" sx={{ color: '#94A3B8' }}>
+
+                            <Box sx={{ 
+                                flex: 1,
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: 2,
+                                minWidth: 0,
+                                height: '100%'
+                            }}>
+                                <Box sx={{ 
+                                    minWidth: 0,
+                                    flex: 1
+                                }}>
+                                    <Typography
+                                        variant="body2"
+                                        sx={{
+                                            color: '#64748B',
+                                            fontWeight: 500,
+                                            letterSpacing: 0.2,
+                                            mb: 0.3
+                                        }}
+                                    >
+                                        {card.titulo}
+                                    </Typography>
+
+                                    <Typography
+                                        variant="body1"
+                                        sx={{
+                                            fontWeight: 600,
+                                            color: '#0F172A',
+                                            lineHeight: 1.2,
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                        }}
+                                    >
+                                        {card.valor}
+                                    </Typography>
+                                </Box>
+
+                                <Typography
+                                    variant="caption"
+                                    sx={{
+                                        color: '#94A3B8',
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        textAlign: 'right',
+                                        minWidth: 80,
+                                        maxWidth: 120
+                                    }}
+                                >
                                     {card.subtitulo}
                                 </Typography>
                             </Box>
